@@ -114,7 +114,8 @@ function rowToBenutzer(r){return{...r.data,id:r.id};}
 
 // ─── HAUPTKOMPONENTE ─────────────────────────────────────────────────────────
 export default function DrahteselApp() {
-  const [screen,setScreen]=useState("login");
+  const startScreen=new URLSearchParams(window.location.search).get("mode")==="kunde"?"kunde-selbst":"login";
+  const [screen,setScreen]=useState(startScreen);
   const [benutzer,setBenutzer]=useState(null);
   const [benutzerListe,setBenutzerListe]=useState([
     {id:"u1",name:"Ömer Colak",passwort:"1234",rolle:"admin"},
@@ -1580,3 +1581,4 @@ const inputStyle={background:COLORS.surface,border:`1px solid ${COLORS.border}`,
 const btnPrimary={background:COLORS.accent,color:"#000",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const btnSecondary={background:"transparent",color:COLORS.text,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 16px",fontWeight:500,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const labelStyle={display:"block",color:COLORS.muted,fontSize:11,fontWeight:600,letterSpacing:.5,marginBottom:6};
+
