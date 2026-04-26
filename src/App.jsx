@@ -1236,28 +1236,154 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
   </div>);
 }
 
+// ─── KATALOG SCREEN (düzenlenebilir) ─────────────────────────────────────────
 function KatalogScreen(){
+  const [katalog,setKatalog]=useState(()=>{
+    try{const v=localStorage.getItem("dp_katalog");return v?JSON.parse(v):LEISTUNGSKATALOG.map(g=>({...g,items:g.items.map(i=>({...i,id:genId()}))}));}
+    catch{return LEISTUNGSKATALOG.map(g=>({...g,items:g.items.map(i=>({...i,id:genId()}))}));}
+  });
   const [suche,setSuche]=useState("");
-  const gef=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(suche.toLowerCase()))})).filter(g=>g.items.length>0);
+  const [editModus,setEditModus]=useState(false);
+  const [neuGruppe,setNeuGruppe]=useState("");
+  const [neuItem,setNeuItem]=useState({gruppeIdx:0,name:"",preis:""});
+  const [editItem,setEditItem]=useState(null); // {gruppeIdx, itemId, name, preis}
+
+  function speichern(neuKatalog){
+    setKatalog(neuKatalog);
+    localStorage.setItem("dp_katalog",JSON.stringify(neuKatalog));
+  }
+  function gruppeHinzufuegen(){
+    if(!neuGruppe.trim())return;
+    speichern([...katalog,{gruppe:neuGruppe.trim(),items:[]}]);
+    setNeuGruppe("");
+  }
+  function gruppeLoeschen(idx){
+    if(!confirm("Gruppe löschen?"))return;
+    speichern(katalog.filter((_,i)=>i!==idx));
+  }
+  function itemHinzufuegen(){
+    if(!neuItem.name.trim()||!neuItem.preis)return;
+    const neu=[...katalog];
+    neu[neuItem.gruppeIdx].items=[...neu[neuItem.gruppeIdx].items,{id:genId(),name:neuItem.name.trim(),preis:parseFloat(neuItem.preis)}];
+    speichern(neu);
+    setNeuItem({gruppeIdx:neuItem.gruppeIdx,name:"",preis:""});
+  }
+  function itemLoeschen(gIdx,itemId){
+    const neu=[...katalog];
+    neu[gIdx].items=neu[gIdx].items.filter(i=>i.id!==itemId);
+    speichern(neu);
+  }
+  function itemSpeichern(){
+    if(!editItem)return;
+    const neu=[...katalog];
+    neu[editItem.gruppeIdx].items=neu[editItem.gruppeIdx].items.map(i=>
+      i.id===editItem.itemId?{...i,name:editItem.name,preis:parseFloat(editItem.preis)}:i
+    );
+    speichern(neu);
+    setEditItem(null);
+  }
+
+  const gef=katalog.map((g,gi)=>({...g,originalIdx:gi,items:g.items.filter(i=>i.name.toLowerCase().includes(suche.toLowerCase()))})).filter(g=>g.items.length>0||!suche);
+
   return(<div>
-    <h2 style={{marginBottom:16}}>Leistungskatalog</h2>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <h2 style={{fontSize:20,fontWeight:700}}>Leistungskatalog</h2>
+      <button onClick={()=>setEditModus(p=>!p)} style={{...btnSecondary,color:editModus?COLORS.accent:COLORS.muted,borderColor:editModus?COLORS.accent:COLORS.border,fontSize:13}}>
+        {editModus?"✓ Fertig bearbeiten":"✏️ Bearbeiten"}
+      </button>
+    </div>
     <input placeholder="Leistung suchen …" value={suche} onChange={e=>setSuche(e.target.value)} style={{...inputStyle,width:"100%",boxSizing:"border-box",marginBottom:20}}/>
+
+    {editModus&&(
+      <div style={{background:`${COLORS.teal}15`,border:`1px solid ${COLORS.teal}44`,borderRadius:12,padding:"16px 18px",marginBottom:20}}>
+        <div style={{color:COLORS.teal,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>+ NEUE GRUPPE HINZUFÜGEN</div>
+        <div style={{display:"flex",gap:8}}>
+          <input placeholder="Gruppenname z.B. Bremsen" value={neuGruppe} onChange={e=>setNeuGruppe(e.target.value)} style={{...inputStyle,flex:1}}
+            onKeyDown={e=>e.key==="Enter"&&gruppeHinzufuegen()}/>
+          <button onClick={gruppeHinzufuegen} style={{...btnPrimary,background:COLORS.teal}}>+ Gruppe</button>
+        </div>
+      </div>
+    )}
+
+    {editModus&&(
+      <div style={{background:`${COLORS.green}15`,border:`1px solid ${COLORS.green}44`,borderRadius:12,padding:"16px 18px",marginBottom:20}}>
+        <div style={{color:COLORS.green,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>+ NEUE LEISTUNG HINZUFÜGEN</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr auto",gap:8,alignItems:"end"}}>
+          <div>
+            <label style={labelStyle}>Gruppe</label>
+            <select value={neuItem.gruppeIdx} onChange={e=>setNeuItem(p=>({...p,gruppeIdx:parseInt(e.target.value)}))} style={inputStyle}>
+              {katalog.map((g,i)=><option key={i} value={i}>{g.gruppe}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>Leistungsname</label>
+            <input placeholder="z.B. Kette tauschen" value={neuItem.name} onChange={e=>setNeuItem(p=>({...p,name:e.target.value}))} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>Preis (€)</label>
+            <input type="number" placeholder="25" min={0} step={0.5} value={neuItem.preis} onChange={e=>setNeuItem(p=>({...p,preis:e.target.value}))} style={inputStyle}/>
+          </div>
+          <button onClick={itemHinzufuegen} style={{...btnPrimary,marginTop:20}}>+ Hinzufügen</button>
+        </div>
+      </div>
+    )}
+
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      {gef.map(g=>(<div key={g.gruppe} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,overflow:"hidden"}}>
-        <div style={{background:COLORS.surface,padding:"10px 18px",fontWeight:600,fontSize:14,color:COLORS.accent,letterSpacing:.5}}>{g.gruppe}</div>
-        {g.items.map(item=>(<div key={item.name} style={{display:"flex",justifyContent:"space-between",padding:"10px 18px",borderTop:`1px solid ${COLORS.border}`,fontSize:13}}>
-          <span>{item.name}</span><span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.green}}>{formatEuro(item.preis)}</span>
-        </div>))}
-      </div>))}
+      {gef.map((g)=>{
+        const gi=g.originalIdx;
+        return(<div key={g.gruppe} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,overflow:"hidden"}}>
+          <div style={{background:COLORS.surface,padding:"10px 18px",fontWeight:600,fontSize:14,color:COLORS.accent,letterSpacing:.5,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>{g.gruppe}</span>
+            {editModus&&<button onClick={()=>gruppeLoeschen(gi)} style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:16}}>🗑️</button>}
+          </div>
+          {g.items.map(item=>(
+            <div key={item.id} style={{borderTop:`1px solid ${COLORS.border}`}}>
+              {editItem?.itemId===item.id?(
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto auto",gap:8,padding:"8px 14px",alignItems:"center"}}>
+                  <input value={editItem.name} onChange={e=>setEditItem(p=>({...p,name:e.target.value}))} style={{...inputStyle,padding:"6px 10px",fontSize:13}}/>
+                  <input type="number" value={editItem.preis} onChange={e=>setEditItem(p=>({...p,preis:e.target.value}))} style={{...inputStyle,padding:"6px 10px",fontSize:13}}/>
+                  <button onClick={itemSpeichern} style={{...btnPrimary,padding:"6px 12px",fontSize:12}}>✓</button>
+                  <button onClick={()=>setEditItem(null)} style={{...btnSecondary,padding:"6px 12px",fontSize:12}}>✕</button>
+                </div>
+              ):(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 18px",fontSize:13}}>
+                  <span>{item.name}</span>
+                  <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                    <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.green}}>{formatEuro(item.preis)}</span>
+                    {editModus&&<>
+                      <button onClick={()=>setEditItem({gruppeIdx:gi,itemId:item.id,name:item.name,preis:item.preis})}
+                        style={{background:"transparent",border:"none",color:COLORS.blue,cursor:"pointer",fontSize:14}}>✏️</button>
+                      <button onClick={()=>itemLoeschen(gi,item.id)}
+                        style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:14}}>🗑️</button>
+                    </>}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {editModus&&g.items.length===0&&<div style={{padding:"10px 18px",color:COLORS.muted,fontSize:12}}>Noch keine Leistungen in dieser Gruppe.</div>}
+        </div>);
+      })}
     </div>
   </div>);
 }
 
+// ─── EINSTELLUNGEN ────────────────────────────────────────────────────────────
 function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}){
-  const [neuName,setNeuName]=useState("");const [neuPw,setNeuPw]=useState("");const [neuRolle,setNeuRolle]=useState("mitarbeiter");
-  return(<div style={{maxWidth:560}}>
+  const [neuName,setNeuName]=useState("");
+  const [neuPw,setNeuPw]=useState("");
+  const [neuRolle,setNeuRolle]=useState("mitarbeiter");
+  const [waTab,setWaTab]=useState(false);
+  const [twilioConfig,setTwilioConfig]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("dp_twilio")||"{}");}catch{return {};}
+  });
+  const TC=(k,v)=>setTwilioConfig(p=>{const n={...p,[k]:v};localStorage.setItem("dp_twilio",JSON.stringify(n));return n;});
+
+  return(<div style={{maxWidth:600}}>
     <h2 style={{marginBottom:20}}>Einstellungen</h2>
-    <InfoKarte titel="Benutzer verwalten">
+
+    {/* BENUTZER */}
+    <InfoKarte titel="👤 Benutzer verwalten">
       {benutzerListe.map(u=>(<div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}>
         <span>{u.name}</span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -1275,11 +1401,49 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
         <button onClick={()=>{if(!neuName||!neuPw)return;setBenutzerListe(p=>[...p,{id:genId(),name:neuName,passwort:neuPw,rolle:neuRolle}]);setNeuName("");setNeuPw("");showToast("Benutzer angelegt!");}} style={btnPrimary}>+</button>
       </div>
     </InfoKarte>
+
     <div style={{height:16}}/>
-    <InfoKarte titel="Datenverwaltung">
-      <p style={{color:COLORS.muted,fontSize:13}}>Daten im Browser gespeichert (localStorage). Für Cloud-Lösung ist Backend nötig.</p>
-      <button onClick={()=>{if(confirm("ALLE Daten löschen?")){["dp_kunden","dp_rechnungen","dp_auftraege","dp_bisikletler"].forEach(k=>localStorage.removeItem(k));window.location.reload();}}}
-        style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red,marginTop:8,fontSize:12}}>⚠️ Alle Daten zurücksetzen</button>
+
+    {/* WHATSAPP BUSINESS API */}
+    <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setWaTab(p=>!p)}>
+        <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>💬 WHATSAPP BUSINESS API (TWILIO)</div>
+        <span style={{color:COLORS.muted}}>{waTab?"▲":"▼"}</span>
+      </div>
+      {waTab&&(
+        <div style={{marginTop:16}}>
+          <div style={{background:`${COLORS.green}15`,border:`1px solid ${COLORS.green}44`,borderRadius:8,padding:"12px 14px",marginBottom:16,fontSize:12,color:COLORS.green}}>
+            💡 Twilio hesabı için: <strong>twilio.com</strong> → kayıt ol → WhatsApp Sandbox aktif et → aşağıya bilgileri gir
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div>
+              <label style={labelStyle}>Twilio Account SID</label>
+              <input placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" value={twilioConfig.accountSid||""} onChange={e=>TC("accountSid",e.target.value)} style={inputStyle}/>
+            </div>
+            <div>
+              <label style={labelStyle}>Twilio Auth Token</label>
+              <input type="password" placeholder="••••••••••••••••••••••••••••••••" value={twilioConfig.authToken||""} onChange={e=>TC("authToken",e.target.value)} style={inputStyle}/>
+            </div>
+            <div>
+              <label style={labelStyle}>WhatsApp Gönderen Numara (Twilio'dan)</label>
+              <input placeholder="+14155238886" value={twilioConfig.fromNumber||""} onChange={e=>TC("fromNumber",e.target.value)} style={inputStyle}/>
+            </div>
+            <div>
+              <label style={labelStyle}>Twilio Proxy URL (opsiyonel — Backend gerektirir)</label>
+              <input placeholder="https://api.twilio.com/2010..." value={twilioConfig.proxyUrl||""} onChange={e=>TC("proxyUrl",e.target.value)} style={inputStyle}/>
+            </div>
+          </div>
+          <div style={{marginTop:12,padding:"10px 14px",background:COLORS.surface,borderRadius:8,fontSize:12,color:COLORS.muted}}>
+            ⚠️ <strong>Önemli not:</strong> WhatsApp Business API gerçek otomatik gönderim için bir backend (sunucu) gerektirir. Şu an mevcut "💬 WhatsApp" butonları müşterinin numarasına WhatsApp linkiyle yönlendiriyor — bu zaten çalışıyor! Twilio entegrasyonu için ek kurulum gerekir. Hazır olduğunda yardım edebilirim.
+          </div>
+          <button onClick={()=>showToast("Twilio ayarları kaydedildi!")} style={{...btnPrimary,marginTop:14,width:"100%"}}>Kaydet</button>
+        </div>
+      )}
+    </div>
+
+    <div style={{height:8}}/>
+    <InfoKarte titel="🗄️ Datenverwaltung">
+      <p style={{color:COLORS.muted,fontSize:13}}>Veriler Supabase Cloud'da saklanıyor ☁️</p>
     </InfoKarte>
   </div>);
 }
