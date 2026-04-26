@@ -812,6 +812,123 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
 }
 
 // ─── KUNDENLISTE ──────────────────────────────────────────────────────────────
+// ─── NEU BISIKLET FORM ────────────────────────────────────────────────────────
+function NeuBisikletForm({kunde,onSave,onAbbruch}){
+  const [form,setForm]=useState({marke:"",modell:"",farbe:"",rahmennr:"",baujahr:"",typ:"Herrenrad",reifengroesse:"",zustand:"Gut",hasarNotizen:""});
+  const F=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const [saving,setSaving]=useState(false);
+  return(
+    <div style={{maxWidth:560}}>
+      <h2 style={{marginBottom:4}}>Neues Fahrrad</h2>
+      <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Für: {kunde.vorname} {kunde.nachname}</div>
+      <div style={{background:`${COLORS.teal}15`,border:`1px solid ${COLORS.teal}44`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+        <div style={{color:COLORS.teal,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD-STAMMDATEN</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={labelStyle}>Marke</label><input placeholder="z.B. PEGASUS, Trek" value={form.marke} onChange={e=>F("marke",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Modell</label><input placeholder="z.B. Solero, FX3" value={form.modell} onChange={e=>F("modell",e.target.value)} style={inputStyle}/></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={labelStyle}>Farbe</label><input placeholder="z.B. Schwarz" value={form.farbe} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Baujahr</label><input placeholder="z.B. 2018" value={form.baujahr} onChange={e=>F("baujahr",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Typ</label>
+            <select value={form.typ} onChange={e=>F("typ",e.target.value)} style={inputStyle}>
+              {["Herrenrad","Damenrad","Cityrad","Mountainbike","E-Bike","Rennrad","Kinderrad","Lastenrad","Sonstiges"].map(t=><option key={t}>{t}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div><label style={labelStyle}>Rahmennummer</label><input placeholder="optional" value={form.rahmennr} onChange={e=>F("rahmennr",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Reifengröße</label><input placeholder='z.B. 28"' value={form.reifengroesse} onChange={e=>F("reifengroesse",e.target.value)} style={inputStyle}/></div>
+        </div>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={labelStyle}>Allgemeiner Zustand bei Annahme</label>
+        <select value={form.zustand} onChange={e=>F("zustand",e.target.value)} style={{...inputStyle,marginBottom:10}}>
+          {["Sehr gut","Gut","Mittel","Schlecht","Sehr schlecht"].map(z=><option key={z}>{z}</option>)}
+        </select>
+        <label style={labelStyle}>Hasar-/Zustandsnotizen</label>
+        <textarea placeholder="z.B. Kratzer am Rahmen links, Sattel leicht gerissen …" value={form.hasarNotizen} onChange={e=>F("hasarNotizen",e.target.value)} style={{...inputStyle,height:80,resize:"vertical"}}/>
+      </div>
+      <div style={{display:"flex",gap:12}}>
+        <button disabled={saving} onClick={async()=>{
+          if(!form.marke&&!form.modell)return alert("Bitte Marke oder Modell eingeben.");
+          setSaving(true);await onSave(form);setSaving(false);
+        }} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichern...":"🚲 Fahrrad speichern"}</button>
+        <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── BISIKLET DETAIL ──────────────────────────────────────────────────────────
+function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,onAbbruch}){
+  const [edit,setEdit]=useState(false);
+  const [form,setForm]=useState({...bisiklet});
+  const F=(k,v)=>setForm(p=>({...p,[k]:v}));
+  if(edit) return(
+    <div style={{maxWidth:560}}>
+      <h2 style={{marginBottom:20}}>Fahrrad bearbeiten</h2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Marke</label><input value={form.marke||""} onChange={e=>F("marke",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Modell</label><input value={form.modell||""} onChange={e=>F("modell",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Farbe</label><input value={form.farbe||""} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Rahmennummer</label><input value={form.rahmennr||""} onChange={e=>F("rahmennr",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <label style={labelStyle}>Hasar-/Zustandsnotizen</label>
+      <textarea value={form.hasarNotizen||""} onChange={e=>F("hasarNotizen",e.target.value)} style={{...inputStyle,height:80,resize:"vertical",marginBottom:16}}/>
+      <div style={{display:"flex",gap:12}}>
+        <button onClick={()=>{onBearbeiten(form);setEdit(false);}} style={btnPrimary}>Speichern</button>
+        <button onClick={()=>setEdit(false)} style={btnSecondary}>Abbrechen</button>
+      </div>
+    </div>
+  );
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+        <div>
+          <h2 style={{fontSize:22,fontWeight:700,marginBottom:2}}>🚲 {bisiklet.marke} {bisiklet.modell}</h2>
+          <div style={{color:COLORS.muted,fontSize:13}}>Erfasst: {bisiklet.erstellt} · {bisiklet.typ}</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setEdit(true)} style={btnSecondary}>Bearbeiten</button>
+          <button onClick={onNeuAuftrag} style={btnPrimary}>+ Neuer Auftrag</button>
+          <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+        <InfoKarte titel="Fahrraddaten">
+          {bisiklet.farbe&&<InfoZeile label="Farbe" wert={bisiklet.farbe}/>}
+          {bisiklet.baujahr&&<InfoZeile label="Baujahr" wert={bisiklet.baujahr}/>}
+          {bisiklet.rahmennr&&<InfoZeile label="Rahmennr." wert={bisiklet.rahmennr}/>}
+          {bisiklet.reifengroesse&&<InfoZeile label="Reifen" wert={bisiklet.reifengroesse}/>}
+          <InfoZeile label="Zustand" wert={bisiklet.zustand||"—"}/>
+        </InfoKarte>
+        <InfoKarte titel="📝 Hasar- / Zustandsnotizen">
+          <p style={{color:COLORS.muted,fontSize:13,margin:0,whiteSpace:"pre-wrap"}}>{bisiklet.hasarNotizen||"Keine Notizen."}</p>
+        </InfoKarte>
+      </div>
+      <div style={{fontWeight:600,marginBottom:12}}>Servicehistorie ({auftraege.length} Aufträge)</div>
+      {auftraege.length===0&&<div style={{color:COLORS.muted,fontSize:13}}>Noch kein Auftrag für dieses Fahrrad.</div>}
+      {auftraege.map(a=>{const st=STATUS[a.status]||STATUS["Neu"];return(
+        <div key={a.id} onClick={()=>onAuftrag(a)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
+          <div>
+            <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:12}}>#{a.nummer}</span>
+            <span style={{marginLeft:10,fontSize:13}}>{a.erstellt}</span>
+            {a.kundenbeschwerden&&<div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{a.kundenbeschwerden.slice(0,60)}{a.kundenbeschwerden.length>60?"…":""}</div>}
+          </div>
+          <div style={{textAlign:"right"}}>
+            <span style={{background:st.bg,color:st.farbe,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600,display:"block",marginBottom:4}}>{st.label}</span>
+            <span style={{color:COLORS.accent,fontFamily:"'IBM Plex Mono'",fontSize:13}}>{formatEuro(a.brutto||0)}</span>
+          </div>
+        </div>
+      );})}
+    </div>
+  );
+}
+
 function KundenListe({kunden,auftraege,onWaehle,onNeu}){
   const [suche,setSuche]=useState("");
   const gefiltert=kunden.filter(k=>`${k.vorname} ${k.nachname} ${k.email} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()));
