@@ -991,6 +991,15 @@ function KundeFormFelder({form,F}){
   </div>);
 }
 // ─── RAPORLAMA ────────────────────────────────────────────────────────────────
+function erstelltZuMonat(erstellt){
+  if(!erstellt)return"";
+  try{const[d,m,y]=erstellt.split(".");return`${y}-${m}`;}catch{return"";}
+}
+function erstelltZuDate(erstellt){
+  if(!erstellt)return new Date(0);
+  try{const[d,m,y]=erstellt.split(".");return new Date(`${y}-${m}-${d}`);}catch{return new Date(0);}
+}
+
 function RaporlamaScreen({auftraege,rechnungen,kunden}){
   const [zeitraum,setZeitraum]=useState("alle");
   const jetzt=new Date();
@@ -1003,14 +1012,11 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
     if(zeitraum==="30")cutoff.setDate(cutoff.getDate()-30);
     else if(zeitraum==="90")cutoff.setDate(cutoff.getDate()-90);
     else if(zeitraum==="365")cutoff.setDate(cutoff.getDate()-365);
-    gefRechnung=rechnungen.filter(r=>{
-      const [d,m,y]=r.erstellt.split(".");
-      return new Date(`${y}-${m}-${d}`)>=cutoff;
-    });
+    gefRechnung=rechnungen.filter(r=>erstelltZuDate(r.erstellt)>=cutoff);
   }
 
-  const gesamtUmsatz=gefRechnung.reduce((s,r)=>s+(r.brutto||0),0);
-  const gesamtNetto=gefRechnung.reduce((s,r)=>s+(r.netto||calcNetto(r.brutto||0)),0);
+  const gesamtUmsatz=gefRechnung.reduce((s,r)=>s+(+r.brutto||0),0);
+  const gesamtNetto=gefRechnung.reduce((s,r)=>s+(+r.netto||calcNetto(+r.brutto||0)),0);
   const gesamtMwst=gesamtUmsatz-gesamtNetto;
   const avgRechnung=gefRechnung.length?gesamtUmsatz/gefRechnung.length:0;
 
@@ -1019,8 +1025,8 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
   for(let i=5;i>=0;i--){
     const d=new Date(jetzt.getFullYear(),jetzt.getMonth()-i,1);
     const mStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
-    const mR=rechnungen.filter(r=>monat(r.erstellt)===mStr);
-    monatDaten.push({label:`${monatsName[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,umsatz:mR.reduce((s,r)=>s+(r.brutto||0),0),anzahl:mR.length});
+    const mR=rechnungen.filter(r=>erstelltZuMonat(r.erstellt)===mStr);
+    monatDaten.push({label:`${monatsName[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,umsatz:mR.reduce((s,r)=>s+(+r.brutto||0),0),anzahl:mR.length});
   }
   const maxUmsatz=Math.max(...monatDaten.map(m=>m.umsatz),1);
 
