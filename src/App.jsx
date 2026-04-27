@@ -9,7 +9,7 @@ const HEADERS = {
   "apikey": SUPA_KEY,
   "Authorization": `Bearer ${SUPA_KEY}`,
   "Prefer": "return=representation",
-};
+};a
 
 // ─── SUPABASE YARDIMCILARI ────────────────────────────────────────────────────
 async function dbGet(table) {
@@ -36,6 +36,31 @@ async function dbDelete(table, id) {
     method: "DELETE", headers: HEADERS,
   });
   if (!r.ok) throw new Error(await r.text());
+}
+
+// ─── FOTOĞRAF YÜKLEME ────────────────────────────────────────────────────────
+async function uploadFoto(file, entityType, entityId) {
+  const ext = file.name.split(".").pop() || "jpg";
+  const path = `${entityType}/${entityId}/${genId()}.${ext}`;
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, {
+    method: "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": file.type },
+    body: file,
+  });
+  if (!r.ok) throw new Error(await r.text());
+  const url = `${SUPA_URL}/storage/v1/object/public/fotos/${path}`;
+  await dbInsert("fotos", { id: genId(), entity_type: entityType, entity_id: entityId, url, beschreibung: "", erstellt: heute() });
+  return url;
+}
+async function deleteFoto(fotoId, url) {
+  const path = url.split("/public/fotos/")[1];
+  if (path) await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, { method: "DELETE", headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}` } });
+  await dbDelete("fotos", fotoId);
+}
+async function getFotos(entityType, entityId) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/fotos?entity_type=eq.${entityType}&entity_id=eq.${entityId}&select=*`, { headers: HEADERS });
+  if (!r.ok) return [];
+  return r.json();
 }
 
 // ─── LOGO DATA
@@ -310,7 +335,7 @@ export default function DrahteselApp() {
           onAbbruch={()=>setScreen("kunden")}/>}
         {screen==="neu-bisiklet"&&selKunde&&<NeuBisikletForm
           kunde={selKunde}
-          onSave={async(b)=>{try{await bisikletHinzufuegen(b,selKunde.id);showToast("Fahrrad gespeichert!");setScreen("kunde-detail");}catch(e){showToast("Fehler","err");}}}
+          onSave={async(b)=>{try{const saved=await bisikletHinzufuegen(b,selKunde.id);showToast("Fahrrad gespeichert!");return saved;}catch(e){showToast("Fehler","err");}}}
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="bisiklet-detail"&&selBisiklet&&<BisikletDetail
           bisiklet={selBisiklet}
@@ -804,6 +829,15 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         </div>
       )}
 
+      {/* HASAR FOTOĞRAFLARI */}
+      {auftrag.id&&(
+        <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:4}}>📸 HASAR / DURUM FOTOĞRAFLARI</div>
+          <div style={{color:COLORS.muted,fontSize:11,marginBottom:12}}>Teslim alındığında hasarlı veya bozuk parçaların fotoğraflarını ekleyin</div>
+          <FotoGalerie entityType="auftrag" entityId={auftrag.id} maxFotos={5}/>
+        </div>
+      )}
+
       {/* DRUCKBARER BEREICH */}
       <div ref={printRef} style={{background:"white",color:"#111",padding:36,borderRadius:12,fontFamily:"sans-serif"}}>
         <div className="kopf" style={{display:"flex",justifyContent:"space-between",marginBottom:24,alignItems:"flex-start"}}>
@@ -883,8 +917,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           </>
         )}
         <div style={{marginTop:32,paddingTop:14,borderTop:"1px solid #ddd",fontSize:11,color:"#888",display:"flex",justifyContent:"space-between"}}>
-          <div><strong>HAS 17 GmbH</strong> · Fehrbellinerstr. 17 · 10119 Berlin<br/>USt-IdNr: DE459175991 · Steuernummer: 30/333/50218<br/>Geschäftsführer: Ömer COLAK</div>
-          <div style={{textAlign:"right"}}>Berliner Sparkasse<br/>IBAN: DE02 1005 0000 0191 565997<br/>BIC: BELADEBEXXX</div>
+          {(()=>{const f=getFirma();return(<><div><strong>{f.name}</strong> · {f.strasse} · {f.plz} {f.ort}<br/>USt-IdNr: {f.ustId} · Steuernummer: {f.steuerNr}<br/>Geschäftsführer: {f.geschaeftsfuehrer}</div>
+          <div style={{textAlign:"right"}}>{f.bank}<br/>IBAN: {f.iban}<br/>BIC: {f.bic}</div></>);})()}
         </div>
       </div>
 
@@ -925,6 +959,103 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
 }
 
 // ─── KUNDENLISTE ──────────────────────────────────────────────────────────────
+// ─── FOTO GALERİ BİLEŞENİ ────────────────────────────────────────────────────
+function FotoGalerie({entityType, entityId, maxFotos=5}){
+  const [fotos,setFotos]=useState([]);
+  const [yukleniyor,setYukleniyor]=useState(false);
+  const [preview,setPreview]=useState(null);
+  const inputRef=useRef();
+
+  useEffect(()=>{
+    if(!entityId)return;
+    getFotos(entityType,entityId).then(setFotos).catch(()=>{});
+  },[entityId]);
+
+  async function handleFiles(files){
+    if(!files||!files.length)return;
+    const kalan=maxFotos-fotos.length;
+    const secilen=Array.from(files).slice(0,kalan);
+    if(!secilen.length)return showToastGlobal(`Maksimum ${maxFotos} fotoğraf yüklenebilir.`,"err");
+    setYukleniyor(true);
+    for(const file of secilen){
+      try{
+        // Önce IndexedDB'ye kaydet (offline fallback)
+        const url=await uploadFoto(file,entityType,entityId);
+        setFotos(p=>[...p,{id:genId(),url,entity_type:entityType,entity_id:entityId,erstellt:heute()}]);
+      }catch(e){
+        // Fallback: base64 olarak sakla
+        const reader=new FileReader();
+        reader.onload=ev=>{
+          const b64url=ev.target.result;
+          const fotoObj={id:genId(),url:b64url,entity_type:entityType,entity_id:entityId,erstellt:heute(),local:true};
+          setFotos(p=>[...p,fotoObj]);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+    setYukleniyor(false);
+  }
+
+  async function silFoto(foto){
+    if(!confirm("Bu fotoğrafı sil?"))return;
+    try{
+      if(!foto.local)await deleteFoto(foto.id,foto.url);
+      setFotos(p=>p.filter(f=>f.id!==foto.id));
+    }catch(e){setFotos(p=>p.filter(f=>f.id!==foto.id));}
+  }
+
+  return(
+    <div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
+        {fotos.map(f=>(
+          <div key={f.id} style={{position:"relative",width:90,height:90}}>
+            <img src={f.url} alt="" onClick={()=>setPreview(f.url)}
+              style={{width:90,height:90,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`2px solid ${COLORS.border}`}}/>
+            <button onClick={()=>silFoto(f)}
+              style={{position:"absolute",top:-6,right:-6,background:COLORS.red,border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",color:"white",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>×</button>
+            {f.local&&<div style={{position:"absolute",bottom:2,left:2,background:"#0008",borderRadius:3,padding:"1px 4px",fontSize:9,color:"#fff"}}>lokal</div>}
+          </div>
+        ))}
+        {fotos.length<maxFotos&&(
+          <button onClick={()=>inputRef.current.click()} disabled={yukleniyor}
+            style={{width:90,height:90,border:`2px dashed ${COLORS.border}`,borderRadius:8,background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:COLORS.muted,opacity:yukleniyor?.6:1}}>
+            {yukleniyor?<div style={{fontSize:20}}>⏳</div>:<>
+              <div style={{fontSize:28}}>📷</div>
+              <div style={{fontSize:10}}>Ekle</div>
+            </>}
+          </button>
+        )}
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" multiple capture="environment"
+        style={{display:"none"}} onChange={e=>handleFiles(e.target.files)}/>
+      <div style={{display:"flex",gap:8,marginBottom:4}}>
+        <button onClick={()=>{inputRef.current.removeAttribute("capture");inputRef.current.click();setTimeout(()=>inputRef.current.setAttribute("capture","environment"),500);}}
+          style={{...btnSecondary,fontSize:12,padding:"6px 12px"}}>📁 Galeriden seç</button>
+        <button onClick={()=>{inputRef.current.setAttribute("capture","environment");inputRef.current.click();}}
+          style={{...btnSecondary,fontSize:12,padding:"6px 12px"}}>📷 Kamera</button>
+        {fotos.length>0&&<span style={{color:COLORS.muted,fontSize:12,alignSelf:"center"}}>{fotos.length}/{maxFotos} fotoğraf</span>}
+      </div>
+
+      {/* Büyük önizleme */}
+      {preview&&(
+        <div onClick={()=>setPreview(null)} style={{position:"fixed",inset:0,background:"#000d",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <img src={preview} alt="" style={{maxWidth:"90vw",maxHeight:"90vh",objectFit:"contain",borderRadius:12}}/>
+          <button onClick={()=>setPreview(null)} style={{position:"absolute",top:20,right:20,background:"white",border:"none",borderRadius:"50%",width:36,height:36,fontSize:20,cursor:"pointer"}}>×</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Global toast helper for FotoGalerie
+function showToastGlobal(msg,art){
+  const div=document.createElement("div");
+  div.style.cssText=`position:fixed;bottom:24px;right:24px;background:${art==="err"?"#f87171":"#4ade80"};color:#000;border-radius:10px;padding:12px 20px;font-weight:600;font-size:13px;z-index:9999;box-shadow:0 4px 20px #0008;font-family:sans-serif`;
+  div.textContent=(art==="err"?"✕ ":"✓ ")+msg;
+  document.body.appendChild(div);
+  setTimeout(()=>div.remove(),3000);
+}
+
 // ─── NEU BISIKLET FORM ────────────────────────────────────────────────────────
 function NeuBisikletForm({kunde,onSave,onAbbruch}){
   const [form,setForm]=useState({marke:"",modell:"",farbe:"",rahmennr:"",baujahr:"",typ:"Herrenrad",reifengroesse:"",zustand:"Gut",hasarNotizen:""});
@@ -965,10 +1096,16 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
       <div style={{display:"flex",gap:12}}>
         <button disabled={saving} onClick={async()=>{
           if(!form.marke&&!form.modell)return alert("Bitte Marke oder Modell eingeben.");
-          setSaving(true);await onSave(form);setSaving(false);
+          setSaving(true);const saved=await onSave(form);if(saved?.id)setSavedBisikletId(saved.id);setSaving(false);
         }} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichern...":"🚲 Fahrrad speichern"}</button>
         <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
       </div>
+      {savedBisikletId&&(
+        <div style={{marginTop:20,background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px"}}>
+          <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>📸 FOTOĞRAF EKLE</div>
+          <FotoGalerie entityType="bisiklet" entityId={savedBisikletId} maxFotos={5}/>
+        </div>
+      )}
     </div>
   );
 }
@@ -1022,6 +1159,12 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
           <p style={{color:COLORS.muted,fontSize:13,margin:0,whiteSpace:"pre-wrap"}}>{bisiklet.hasarNotizen||"Keine Notizen."}</p>
         </InfoKarte>
       </div>
+      {/* FOTOĞRAFLAR */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+        <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>📸 FOTOĞRAFLAR (Bisiklet)</div>
+        <FotoGalerie entityType="bisiklet" entityId={bisiklet.id} maxFotos={5}/>
+      </div>
+
       <div style={{fontWeight:600,marginBottom:12}}>Servicehistorie ({auftraege.length} Aufträge)</div>
       {auftraege.length===0&&<div style={{color:COLORS.muted,fontSize:13}}>Noch kein Auftrag für dieses Fahrrad.</div>}
       {auftraege.map(a=>{const st=STATUS[a.status]||STATUS["Neu"];return(
