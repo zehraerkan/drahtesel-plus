@@ -117,10 +117,16 @@ export default function DrahteselApp() {
   const startScreen=new URLSearchParams(window.location.search).get("mode")==="kunde"?"kunde-selbst":"login";
   const [screen,setScreen]=useState(startScreen);
   const [benutzer,setBenutzer]=useState(null);
-  const [benutzerListe,setBenutzerListe]=useState([
-    {id:"u1",name:"Ömer Colak",passwort:"1234",rolle:"admin"},
-    {id:"u2",name:"Werkstatt",passwort:"1234",rolle:"mitarbeiter"},
-  ]);
+  const [benutzerListe,setBenutzerListe]=useState(()=>{
+    try{
+      const v=localStorage.getItem("dp_users");
+      if(v){const p=JSON.parse(v);if(p.length>0)return p;}
+    }catch{}
+    return[
+      {id:"u1",name:"Ömer Colak",passwort:"1234",rolle:"admin"},
+      {id:"u2",name:"Werkstatt",passwort:"1234",rolle:"mitarbeiter"},
+    ];
+  });
   const [kunden,setKunden]=useState([]);
   const [bisikletler,setBisikletler]=useState([]);
   const [auftraege,setAuftraege]=useState([]);
@@ -621,6 +627,44 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
 }
 
 // ─── AUFTRAG DETAIL ───────────────────────────────────────────────────────────
+// ─── WA MESSAGE EDITOR ────────────────────────────────────────────────────────
+function WaMessageEditor({template,kunde,auftrag}){
+  const [msg,setMsg]=useState(template.text(kunde,auftrag));
+  // Reset when template changes
+  useState(()=>{ setMsg(template.text(kunde,auftrag)); },[template.id]);
+
+  return(
+    <div style={{background:COLORS.surface,borderRadius:10,padding:14,marginTop:4}}>
+      <div style={{color:COLORS.muted,fontSize:11,fontWeight:600,letterSpacing:.5,marginBottom:8}}>MESAJ METNİ — DÜZENLEYEBİLİRSİNİZ</div>
+      <textarea
+        value={msg}
+        onChange={e=>setMsg(e.target.value)}
+        rows={5}
+        style={{...inputStyle,resize:"vertical",fontSize:13,lineHeight:1.6,marginBottom:12}}
+      />
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        {kunde.whatsapp&&(
+          <a href={`https://wa.me/${(kunde.whatsapp||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`}
+            target="_blank" rel="noopener noreferrer"
+            style={{...btnPrimary,background:"#25D366",textDecoration:"none",fontSize:13}}>
+            💬 WhatsApp senden
+          </a>
+        )}
+        {kunde.email&&(
+          <a href={`mailto:${kunde.email}?subject=Drahtesel Plus — Arbeitsauftrag %23${auftrag.nummer}&body=${encodeURIComponent(msg)}`}
+            style={{...btnSecondary,textDecoration:"none",fontSize:13}}>
+            📧 Per E-Mail
+          </a>
+        )}
+        <button onClick={()=>setMsg(template.text(kunde,auftrag))}
+          style={{...btnSecondary,fontSize:12,color:COLORS.muted}}>
+          ↺ Sıfırla
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onAbbruch,showToast}){
   const [notizen,setNotizen]=useState(auftrag.notizen||"");
   const [waTemplate,setWaTemplate]=useState(null);
@@ -704,16 +748,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             ))}
           </div>
           {waTemplate&&(
-            <div style={{background:COLORS.surface,borderRadius:10,padding:14,marginTop:4}}>
-              <div style={{fontSize:13,color:COLORS.text,marginBottom:12,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{waTemplate.text(kunde,auftrag)}</div>
-              <div style={{display:"flex",gap:10}}>
-                {kunde.whatsapp&&<a href={`https://wa.me/${(kunde.whatsapp||"").replace(/\D/g,"")}?text=${encodeURIComponent(waTemplate.text(kunde,auftrag))}`}
-                  target="_blank" rel="noopener noreferrer"
-                  style={{...btnPrimary,background:"#25D366",textDecoration:"none",fontSize:13}}>💬 WhatsApp senden</a>}
-                {kunde.email&&<a href={`mailto:${kunde.email}?body=${encodeURIComponent(waTemplate.text(kunde,auftrag))}`}
-                  style={{...btnSecondary,textDecoration:"none",fontSize:13}}>📧 Per E-Mail</a>}
-              </div>
-            </div>
+            <WaMessageEditor template={waTemplate} kunde={kunde} auftrag={auftrag}/>
           )}
         </div>
       )}
@@ -1507,24 +1542,44 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
     <h2 style={{marginBottom:20}}>Einstellungen</h2>
 
     {/* BENUTZER */}
-    <InfoKarte titel="👤 Benutzer verwalten">
-      {benutzerListe.map(u=>(<div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}>
-        <span>{u.name}</span>
+    <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:8}}>
+      <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:4}}>👤 BENUTZER VERWALTEN</div>
+      <div style={{color:COLORS.muted,fontSize:12,marginBottom:14}}>Veriler bu cihazda kalıcı olarak saklanır.</div>
+      {benutzerListe.map(u=>(<div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}>
+        <div>
+          <span style={{fontWeight:500}}>{u.name}</span>
+          {u.id===benutzer?.id&&<span style={{color:COLORS.accent,fontSize:11,marginLeft:8}}>(aktif)</span>}
+        </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <span style={{color:COLORS.muted,fontSize:11}}>{u.rolle}</span>
-          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`${u.name} löschen?`))setBenutzerListe(p=>p.filter(x=>x.id!==u.id));}}
-            style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:16}}>×</button>}
+          <span style={{background:u.rolle==="admin"?`${COLORS.accent}22`:`${COLORS.blue}22`,color:u.rolle==="admin"?COLORS.accent:COLORS.blue,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{u.rolle}</span>
+          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`))setBenutzerListe(p=>p.filter(x=>x.id!==u.id));}}
+            style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:18,padding:"0 4px"}}>×</button>}
         </div>
       </div>))}
-      <div style={{display:"flex",gap:8,marginTop:14,flexWrap:"wrap"}}>
-        <input placeholder="Name" value={neuName} onChange={e=>setNeuName(e.target.value)} style={{...inputStyle,flex:1,minWidth:120}}/>
-        <input placeholder="Passwort" value={neuPw} onChange={e=>setNeuPw(e.target.value)} style={{...inputStyle,flex:1,minWidth:100}}/>
-        <select value={neuRolle} onChange={e=>setNeuRolle(e.target.value)} style={{...inputStyle,minWidth:100}}>
-          <option value="mitarbeiter">Mitarbeiter</option><option value="admin">Admin</option>
-        </select>
-        <button onClick={()=>{if(!neuName||!neuPw)return;setBenutzerListe(p=>[...p,{id:genId(),name:neuName,passwort:neuPw,rolle:neuRolle}]);setNeuName("");setNeuPw("");showToast("Benutzer angelegt!");}} style={btnPrimary}>+</button>
+      <div style={{marginTop:16}}>
+        <div style={{color:COLORS.muted,fontSize:12,fontWeight:600,letterSpacing:.5,marginBottom:10}}>YENİ KULLANICI EKLE</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+          <div><label style={labelStyle}>Ad Soyad</label>
+            <input placeholder="z.B. Marco Müller" value={neuName} onChange={e=>setNeuName(e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Şifre</label>
+            <input placeholder="Şifre girin" value={neuPw} onChange={e=>setNeuPw(e.target.value)} style={inputStyle}/></div>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+          <div style={{flex:1}}>
+            <label style={labelStyle}>Rol</label>
+            <select value={neuRolle} onChange={e=>setNeuRolle(e.target.value)} style={inputStyle}>
+              <option value="mitarbeiter">Mitarbeiter</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button onClick={()=>{
+            if(!neuName.trim()||!neuPw.trim())return alert("Ad ve şifre zorunludur.");
+            setBenutzerListe(p=>[...p,{id:genId(),name:neuName.trim(),passwort:neuPw.trim(),rolle:neuRolle}]);
+            setNeuName("");setNeuPw("");showToast(`"${neuName}" eklendi!`);
+          }} style={{...btnPrimary,padding:"10px 24px"}}>+ Ekle</button>
+        </div>
       </div>
-    </InfoKarte>
+    </div>
 
     <div style={{height:16}}/>
 
@@ -1581,4 +1636,3 @@ const inputStyle={background:COLORS.surface,border:`1px solid ${COLORS.border}`,
 const btnPrimary={background:COLORS.accent,color:"#000",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const btnSecondary={background:"transparent",color:COLORS.text,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 16px",fontWeight:500,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const labelStyle={display:"block",color:COLORS.muted,fontSize:11,fontWeight:600,letterSpacing:.5,marginBottom:6};
-
