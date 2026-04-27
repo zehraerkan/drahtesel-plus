@@ -335,7 +335,7 @@ export default function DrahteselApp() {
           onAbbruch={()=>setScreen("kunden")}/>}
         {screen==="neu-bisiklet"&&selKunde&&<NeuBisikletForm
           kunde={selKunde}
-          onSave={async(b)=>{try{const saved=await bisikletHinzufuegen(b,selKunde.id);showToast("Fahrrad gespeichert!");return saved;}catch(e){showToast("Fehler","err");}}}
+          onSave={async(b)=>{try{const saved=await bisikletHinzufuegen(b,selKunde.id);showToast("Fahrrad gespeichert!");setScreen("kunde-detail");return saved;}catch(e){showToast("Fehler","err");}}}
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="bisiklet-detail"&&selBisiklet&&<BisikletDetail
           bisiklet={selBisiklet}
@@ -1019,7 +1019,7 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
           </div>
         ))}
         {fotos.length<maxFotos&&(
-          <button onClick={()=>inputRef.current.click()} disabled={yukleniyor}
+          <button onClick={()=>inputRef.current&&inputRef.current.click()} disabled={yukleniyor}
             style={{width:90,height:90,border:`2px dashed ${COLORS.border}`,borderRadius:8,background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:COLORS.muted,opacity:yukleniyor?.6:1}}>
             {yukleniyor?<div style={{fontSize:20}}>⏳</div>:<>
               <div style={{fontSize:28}}>📷</div>
@@ -1028,12 +1028,12 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
           </button>
         )}
       </div>
-      <input ref={inputRef} type="file" accept="image/*" multiple capture="environment"
+      <input ref={inputRef} type="file" accept="image/*" multiple
         style={{display:"none"}} onChange={e=>handleFiles(e.target.files)}/>
       <div style={{display:"flex",gap:8,marginBottom:4}}>
-        <button onClick={()=>{inputRef.current.removeAttribute("capture");inputRef.current.click();setTimeout(()=>inputRef.current.setAttribute("capture","environment"),500);}}
+        <button onClick={()=>{if(!inputRef.current)return;inputRef.current.removeAttribute("capture");inputRef.current.click();}}
           style={{...btnSecondary,fontSize:12,padding:"6px 12px"}}>📁 Galeriden seç</button>
-        <button onClick={()=>{inputRef.current.setAttribute("capture","environment");inputRef.current.click();}}
+        <button onClick={()=>{if(!inputRef.current)return;inputRef.current.setAttribute("capture","environment");inputRef.current.click();}}
           style={{...btnSecondary,fontSize:12,padding:"6px 12px"}}>📷 Kamera</button>
         {fotos.length>0&&<span style={{color:COLORS.muted,fontSize:12,alignSelf:"center"}}>{fotos.length}/{maxFotos} fotoğraf</span>}
       </div>
@@ -1063,6 +1063,7 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
   const [form,setForm]=useState({marke:"",modell:"",farbe:"",rahmennr:"",baujahr:"",typ:"Herrenrad",reifengroesse:"",zustand:"Gut",hasarNotizen:""});
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
   const [saving,setSaving]=useState(false);
+  const [savedBisikletId,setSavedBisikletId]=useState(null);
   return(
     <div style={{maxWidth:560}}>
       <h2 style={{marginBottom:4}}>Neues Fahrrad</h2>
