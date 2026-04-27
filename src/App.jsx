@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SUPA_URL = "https://dtpjypraefamxgssklgv.supabase.co";
@@ -100,6 +100,15 @@ const WA_TEMPLATES = [
 ];
 
 function genId(){return Math.random().toString(36).slice(2,10);}
+function getFirma(){
+  try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{
+    name:"HAS 17 GmbH",zusatz:"Drahtesel Plus",strasse:"Fehrbellinerstr. 17",plz:"10119",ort:"Berlin",
+    telefon:"030 / 246 37 912",mobil:"0176 / 234 88 885",email:"drahteselplus@google.com",
+    web:"www.drahteselplus.de",steuerNr:"30/333/50218",ustId:"DE459175991",
+    iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
+    geschaeftsfuehrer:"Ömer COLAK",absenderEmail:""
+  };}catch{return {};}
+}
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
 function calcNetto(b){return b/1.19;}
@@ -116,8 +125,10 @@ function rowToBenutzer(r){return{...r.data,id:r.id};}
 export default function DrahteselApp() {
   const startScreen=new URLSearchParams(window.location.search).get("mode")==="kunde"?"kunde-selbst":"login";
   const [screen,setScreen]=useState(startScreen);
+  const isMobile=window.innerWidth<768;
   const [benutzer,setBenutzer]=useState(null);
   const [benutzerListe,setBenutzerListe]=useState(()=>{
+    // Önce localStorage'dan yükle (Supabase yüklenene kadar)
     try{
       const v=localStorage.getItem("dp_users");
       if(v){const p=JSON.parse(v);if(p.length>0)return p;}
@@ -136,10 +147,30 @@ export default function DrahteselApp() {
   const [selAuftrag,setSelAuftrag]=useState(null);
   const [selRechnung,setSelRechnung]=useState(null);
   const [toast,setToast]=useState(null);
-  const [sidebarOffen,setSidebarOffen]=useState(true);
+  const [sidebarOffen,setSidebarOffen]=useState(!isMobile);
   const [laden,setLaden]=useState(false);
 
   // ── Veri yükleme ────────────────────────────────────────────────────────────
+  // Supabase'den kullanıcıları yükle (login öncesi)
+  const ladeBenutzer = useCallback(async () => {
+    try {
+      const rows = await dbGet("benutzer");
+      if (rows.length > 0) {
+        setBenutzerListe(rows.map(rowToBenutzer));
+      } else {
+        // İlk çalıştırma — varsayılan kullanıcıları Supabase'e kaydet
+        const defaults = [
+          {id:"u1",name:"Ömer Colak",passwort:"1234",rolle:"admin"},
+          {id:"u2",name:"Werkstatt",passwort:"1234",rolle:"mitarbeiter"},
+        ];
+        await Promise.all(defaults.map(u=>dbInsert("benutzer",{id:u.id,data:u})));
+        setBenutzerListe(defaults);
+      }
+    } catch(e){ console.warn("Benutzer yüklenemedi:",e.message); }
+  }, []);
+
+  useEffect(()=>{ ladeBenutzer(); },[ladeBenutzer]);
+
   const ladeAlles = useCallback(async () => {
     if (!benutzer) return;
     setLaden(true);
@@ -167,7 +198,8 @@ export default function DrahteselApp() {
   // ── CRUD fonksiyonları ──────────────────────────────────────────────────────
   async function kundeHinzufuegen(k) {
     const id=genId(); const erstellt=heute();
-    const kdNr=String((kunden.length||0)+1).padStart(4,"0");
+    const maxNr=kunden.reduce((m,k)=>Math.max(m,parseInt(k.kdNr)||0),0);
+    const kdNr=String(maxNr+1).padStart(4,"0");
     const neu={...k,id,kdNr,erstellt};
     await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
     setKunden(p=>[neu,...p]); return neu;
@@ -210,6 +242,15 @@ export default function DrahteselApp() {
     setAuftraege(p=>p.map(x=>x.id===id?{...x,notizen}:x));
     setSelAuftrag(p=>p?{...p,notizen}:p);
   }
+  async function rechnungLoeschen(id) {
+    await dbDelete("rechnungen",id);
+    setRechnungen(p=>p.filter(x=>x.id!==id));
+  }
+  async function rechnungAktualisieren(r) {
+    const {id,kundeId,auftragId,erstellt,...data}=r;
+    await dbUpdate("rechnungen",id,{data});
+    setRechnungen(p=>p.map(x=>x.id===id?r:x));
+  }
   async function rechnungHinzufuegen(r) {
     const id=genId(); const erstellt=heute();
     const {kundeId,auftragId,...data}=r;
@@ -235,14 +276,17 @@ export default function DrahteselApp() {
   return (
     <div style={{display:"flex",height:"100vh",background:COLORS.bg,color:COLORS.text,fontFamily:"'IBM Plex Sans',sans-serif",position:"relative",overflow:"hidden"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-      {sidebarOffen&&<Sidebar screen={screen} setScreen={setScreen} benutzer={benutzer} auftraege={auftraege}
-        onLogout={()=>{setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);}}/>}
-      <button onClick={()=>setSidebarOffen(p=>!p)} style={{position:"absolute",top:16,left:sidebarOffen?232:16,zIndex:99,background:COLORS.accent,border:"none",borderRadius:6,width:28,height:28,cursor:"pointer",color:"#000",fontWeight:"bold",fontSize:14,transition:"left .2s"}}>
-        {sidebarOffen?"‹":"›"}
+      {/* Mobile overlay backdrop */}
+      {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0008",zIndex:88}}/>}
+      {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
+        onLogout={()=>{setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);}}
+        isMobile={isMobile}/>}
+      <button onClick={()=>setSidebarOffen(p=>!p)} style={{position:"fixed",top:12,left:sidebarOffen&&!isMobile?236:12,zIndex:99,background:COLORS.accent,border:"none",borderRadius:8,width:36,height:36,cursor:"pointer",color:"#000",fontWeight:"bold",fontSize:18,transition:"left .2s",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px #0006"}}>
+        {sidebarOffen?"✕":"☰"}
       </button>
       {laden&&<div style={{position:"fixed",top:0,left:0,right:0,height:3,background:COLORS.accent,zIndex:999,animation:"pulse 1s infinite"}}/>}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
-      <main style={{flex:1,overflow:"auto",padding:"28px 32px"}}>
+      <main style={{flex:1,overflow:"auto",padding:isMobile?"60px 16px 24px":"60px 32px 24px"}}>
         {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
           onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setScreen("auftrag-detail");}}/>}
@@ -303,7 +347,7 @@ export default function DrahteselApp() {
               const neu=await rechnungHinzufuegen({
                 nummer:nr,kundeId:a.kundeId,auftragId:a.id,
                 positionen:a.positionen,brutto:a.brutto,netto:calcNetto(a.brutto),
-                mwst:calcMwst(a.brutto),bezahlung:"Bar",fahrradModell:a.fahrradModell,
+                mwst:calcMwst(a.brutto),bezahlung:a.bezahlung||"Bar",fahrradModell:a.fahrradModell,
                 kundeVorname:k.vorname,kundeNachname:k.nachname,kundeKdNr:k.kdNr,
               });
               setSelRechnung(neu);showToast("Rechnung erstellt!");setScreen("rechnung-detail");
@@ -315,7 +359,10 @@ export default function DrahteselApp() {
           onDetail={(r,k)=>{setSelRechnung(r);setSelKunde(k);setScreen("rechnung-detail");}}/>}
         {screen==="rechnung-detail"&&selRechnung&&<RechnungDetail
           rechnung={selRechnung} kunde={kunden.find(k=>k.id===selRechnung.kundeId)}
-          onAbbruch={()=>setScreen(selAuftrag?"auftrag-detail":"rechnungen")} showToast={showToast}/>}
+          onAbbruch={()=>setScreen(selAuftrag?"auftrag-detail":"rechnungen")}
+          onLoeschen={async(id)=>{await rechnungLoeschen(id);setScreen("rechnungen");showToast("Rechnung gelöscht.");}}
+          onAktualisieren={async(r)=>{await rechnungAktualisieren(r);setSelRechnung(r);showToast("Gespeichert!");}}
+          showToast={showToast}/>}
         {screen==="katalog"&&<KatalogScreen/>}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden}/>}
         {screen==="einstellungen"&&<EinstellungenScreen benutzer={benutzer} benutzerListe={benutzerListe} setBenutzerListe={setBenutzerListe} showToast={showToast}/>}
@@ -387,7 +434,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
     </div>
   );
 }
-function Sidebar({screen,setScreen,benutzer,onLogout,auftraege}){
+function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile}){
   const offene=auftraege.filter(a=>a.status!=="Abgerechnet").length;
   const nav=[
     {id:"dashboard",label:"Dashboard",icon:"⊞"},
@@ -399,7 +446,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege}){
     {id:"einstellungen",label:"Einstellungen",icon:"⚙"},
   ];
   return(
-    <aside style={{width:220,background:COLORS.surface,borderRight:`1px solid ${COLORS.border}`,display:"flex",flexDirection:"column",padding:"24px 0",flexShrink:0}}>
+    <aside style={{width:220,background:COLORS.surface,borderRight:`1px solid ${COLORS.border}`,display:"flex",flexDirection:"column",padding:"24px 0",flexShrink:0,position:isMobile?"fixed":"relative",top:0,left:0,height:"100vh",zIndex:isMobile?89:1}}>
       <div style={{padding:"0 20px 24px",borderBottom:`1px solid ${COLORS.border}`}}>
         <img src={LOGO_SRC} alt="" style={{width:44,height:44,objectFit:"contain",marginBottom:4}}/>
         <div style={{fontWeight:700,color:COLORS.accent,fontSize:15,letterSpacing:1}}>DRAHTESEL+</div>
@@ -721,7 +768,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
               </div>);
             })}
             {auftrag.status==="Fertig"&&(
-              <button onClick={()=>onRechnungErstellen(auftrag)} style={{...btnPrimary,marginLeft:16,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
+              <button onClick={()=>setZahlungModal(true)} style={{...btnPrimary,marginLeft:16,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
             )}
           </div>
         </div>
@@ -836,6 +883,32 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           <div style={{textAlign:"right"}}>Berliner Sparkasse<br/>IBAN: DE02 1005 0000 0191 565997<br/>BIC: BELADEBEXXX</div>
         </div>
       </div>
+
+      {/* ZAHLUNGSART MODAL */}
+      {zahlungModal&&(
+        <div style={{position:"fixed",inset:0,background:"#000a",zIndex:999,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"32px 28px",width:"100%",maxWidth:380}}>
+            <div style={{fontWeight:700,fontSize:18,marginBottom:6}}>🧾 Rechnung erstellen</div>
+            <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Gesamtbetrag: <strong style={{color:COLORS.accent}}>{formatEuro(auftrag.brutto||0)}</strong></div>
+            <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Zahlungsart wählen:</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:24}}>
+              {["Bar","EC-Karte","Kreditkarte","PayPal","Überweisung","Auf Rechnung"].map(z=>(
+                <button key={z} onClick={()=>setZahlungsart(z)}
+                  style={{padding:"12px 8px",borderRadius:10,border:`2px solid ${zahlungsart===z?COLORS.accent:COLORS.border}`,
+                    background:zahlungsart===z?`${COLORS.accent}22`:"transparent",
+                    color:zahlungsart===z?COLORS.accent:COLORS.text,
+                    cursor:"pointer",fontSize:13,fontWeight:zahlungsart===z?700:400,transition:"all .15s"}}>
+                  {z==="Bar"?"💵 Bar":z==="EC-Karte"?"💳 EC-Karte":z==="Kreditkarte"?"💳 Kreditkarte":z==="PayPal"?"🅿️ PayPal":z==="Überweisung"?"🏦 Überweisung":"📋 Auf Rechnung"}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:12}}>
+              <button onClick={()=>setZahlungModal(false)} style={{...btnSecondary,flex:1}}>Abbrechen</button>
+              <button onClick={()=>{setZahlungModal(false);onRechnungErstellen({...auftrag,bezahlung:zahlungsart});}} style={{...btnPrimary,flex:2}}>✅ Rechnung erstellen</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* İÇ NOTLAR */}
       <div style={{marginTop:16,background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px"}}>
@@ -1293,8 +1366,12 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
 }
 
 // ─── RECHNUNG DETAIL ─────────────────────────────────────────────────────────
-function RechnungDetail({rechnung,kunde,onAbbruch,showToast}){
+function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,showToast}){
   const printRef=useRef();const k=kunde||{};
+  const [editModus,setEditModus]=useState(false);
+  const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
+  const [editPositionen,setEditPositionen]=useState(rechnung.positionen||[]);
+
   function drucken(){
     const win=window.open("","_blank");
     win.document.write(`<html><head><title>Rechnung ${rechnung.nummer}</title>
@@ -1308,22 +1385,44 @@ function RechnungDetail({rechnung,kunde,onAbbruch,showToast}){
     <div style={{maxWidth:680}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h2>Rechnung Nr. {rechnung.nummer}</h2>
-        <div style={{display:"flex",gap:10}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnPrimary}>🖨️ Drucken / PDF</button>
           {k.email&&<a href={`mailto:${k.email}?subject=Rechnung%20Nr.%20${rechnung.nummer}%20-%20Drahtesel%20Plus`} style={{...btnSecondary,textDecoration:"none",fontSize:13}}>📧 E-Mail</a>}
           {k.whatsapp&&<a href={`https://wa.me/${(k.whatsapp||"").replace(/\D/g,"")}?text=Hallo%20${k.vorname}!%20Ihre%20Rechnung%20Nr.%20${rechnung.nummer}%20über%20${formatEuro(rechnung.brutto||0)}%20-%20Drahtesel%20Plus`}
             target="_blank" rel="noopener noreferrer" style={{...btnSecondary,textDecoration:"none",fontSize:13,color:"#25D366",borderColor:"#25D366"}}>💬 WhatsApp</a>}
+          <button onClick={()=>setEditModus(p=>!p)} style={{...btnSecondary,color:editModus?COLORS.accent:COLORS.muted,borderColor:editModus?COLORS.accent:COLORS.border,fontSize:13}}>✏️ Düzenle</button>
+          <button onClick={()=>{if(confirm("Rechnung silinsin mi? Bu işlem geri alınamaz."))onLoeschen(rechnung.id);}} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red,fontSize:13}}>🗑️ Sil</button>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
         </div>
       </div>
+      {editModus&&(
+        <div style={{background:COLORS.card,border:`1px solid ${COLORS.accent}`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
+          <div style={{fontWeight:600,marginBottom:14,color:COLORS.accent}}>✏️ Rechnung düzenle</div>
+          <div style={{marginBottom:12}}>
+            <label style={labelStyle}>Zahlungsart</label>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {["Bar","EC-Karte","Kreditkarte","PayPal","Überweisung","Auf Rechnung"].map(z=>(
+                <button key={z} onClick={()=>setEditBezahlung(z)}
+                  style={{padding:"7px 14px",borderRadius:20,border:`1px solid ${editBezahlung===z?COLORS.accent:COLORS.border}`,
+                    background:editBezahlung===z?`${COLORS.accent}22`:"transparent",
+                    color:editBezahlung===z?COLORS.accent:COLORS.muted,cursor:"pointer",fontSize:12,fontWeight:editBezahlung===z?700:400}}>
+                  {z}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={()=>{onAktualisieren({...rechnung,bezahlung:editBezahlung});setEditModus(false);}} style={btnPrimary}>💾 Kaydet</button>
+        </div>
+      )}
+
       <div ref={printRef} style={{background:"white",color:"#111",padding:40,borderRadius:12,fontFamily:"sans-serif"}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:36}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <img src={LOGO_SRC} alt="" style={{width:50,height:50,objectFit:"contain"}}/>
-            <div><div style={{fontWeight:700,fontSize:18,color:"#3d3db4"}}>DRAHTESEL PLUS</div>
-              <div style={{fontSize:11,color:"#666"}}>HAS 17 GmbH · Fehrbellinerstr. 17 · 10119 Berlin</div>
-              <div style={{fontSize:11,color:"#666"}}>Tel: 030/246 37 912 · drahteselplus@google.com</div>
-            </div>
+            {(()=>{const f=getFirma();return(<div><div style={{fontWeight:700,fontSize:18,color:"#3d3db4"}}>{f.zusatz||f.name}</div>
+              <div style={{fontSize:11,color:"#666"}}>{f.name} · {f.strasse} · {f.plz} {f.ort}</div>
+              <div style={{fontSize:11,color:"#666"}}>Tel: {f.telefon} · {f.email}</div>
+            </div>);})()}
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:22,fontWeight:700}}>RECHNUNG</div>
@@ -1532,14 +1631,60 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
   const [neuName,setNeuName]=useState("");
   const [neuPw,setNeuPw]=useState("");
   const [neuRolle,setNeuRolle]=useState("mitarbeiter");
-  const [waTab,setWaTab]=useState(false);
-  const [twilioConfig,setTwilioConfig]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem("dp_twilio")||"{}");}catch{return {};}
+  const [firma,setFirma]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{
+      name:"HAS 17 GmbH",zusatz:"Drahtesel Plus",strasse:"Fehrbellinerstr. 17",plz:"10119",ort:"Berlin",
+      land:"Deutschland",telefon:"030 / 246 37 912",mobil:"0176 / 234 88 885",
+      email:"drahteselplus@google.com",web:"www.drahteselplus.de",
+      steuerNr:"30/333/50218",ustId:"DE459175991",
+      iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
+      geschaeftsfuehrer:"Ömer COLAK",absenderEmail:""
+    };}catch{return {};}
   });
-  const TC=(k,v)=>setTwilioConfig(p=>{const n={...p,[k]:v};localStorage.setItem("dp_twilio",JSON.stringify(n));return n;});
+  const FF=(k,v)=>setFirma(p=>{const n={...p,[k]:v};localStorage.setItem("dp_firma",JSON.stringify(n));return n;});
 
   return(<div style={{maxWidth:600}}>
     <h2 style={{marginBottom:20}}>Einstellungen</h2>
+
+    {/* FİRMA BİLGİLERİ */}
+    <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
+      <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:16}}>🏢 FİRMA BİLGİLERİ</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Firma Adı</label><input value={firma.name||""} onChange={e=>FF("name",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Ek İsim (Dükkan Adı)</label><input value={firma.zusatz||""} onChange={e=>FF("zusatz",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Sokak / Cadde</label><input value={firma.strasse||""} onChange={e=>FF("strasse",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Bina No</label><input value={firma.hausnr||""} onChange={e=>FF("hausnr",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>PLZ</label><input value={firma.plz||""} onChange={e=>FF("plz",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Ort</label><input value={firma.ort||""} onChange={e=>FF("ort",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Land</label><input value={firma.land||""} onChange={e=>FF("land",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Sabit Hat</label><input value={firma.telefon||""} onChange={e=>FF("telefon",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Cep / WhatsApp</label><input value={firma.mobil||""} onChange={e=>FF("mobil",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>E-Mail</label><input value={firma.email||""} onChange={e=>FF("email",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Gönderici E-Mail (E-mail şablonlarında görünür)</label><input placeholder="ornek@gmail.com" value={firma.absenderEmail||""} onChange={e=>FF("absenderEmail",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Web Sitesi</label><input value={firma.web||""} onChange={e=>FF("web",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>Geschäftsführer</label><input value={firma.geschaeftsfuehrer||""} onChange={e=>FF("geschaeftsfuehrer",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+        <div><label style={labelStyle}>Steuernummer</label><input value={firma.steuerNr||""} onChange={e=>FF("steuerNr",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>USt-IdNr</label><input value={firma.ustId||""} onChange={e=>FF("ustId",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+        <div><label style={labelStyle}>Bank</label><input value={firma.bank||""} onChange={e=>FF("bank",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>IBAN</label><input value={firma.iban||""} onChange={e=>FF("iban",e.target.value)} style={inputStyle}/></div>
+        <div><label style={labelStyle}>BIC</label><input value={firma.bic||""} onChange={e=>FF("bic",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <button onClick={()=>showToast("Firma bilgileri kaydedildi! ✓")} style={{...btnPrimary,marginTop:16,width:"100%"}}>💾 Firma Bilgilerini Kaydet</button>
+    </div>
 
     {/* BENUTZER */}
     <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:8}}>
@@ -1552,7 +1697,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={{background:u.rolle==="admin"?`${COLORS.accent}22`:`${COLORS.blue}22`,color:u.rolle==="admin"?COLORS.accent:COLORS.blue,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{u.rolle}</span>
-          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`))setBenutzerListe(p=>p.filter(x=>x.id!==u.id));}}
+          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`)){dbDelete("benutzer",u.id).catch(()=>{});setBenutzerListe(p=>p.filter(x=>x.id!==u.id));}}}
             style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:18,padding:"0 4px"}}>×</button>}
         </div>
       </div>))}
@@ -1574,8 +1719,10 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
           </div>
           <button onClick={()=>{
             if(!neuName.trim()||!neuPw.trim())return alert("Ad ve şifre zorunludur.");
-            setBenutzerListe(p=>[...p,{id:genId(),name:neuName.trim(),passwort:neuPw.trim(),rolle:neuRolle}]);
-            setNeuName("");setNeuPw("");showToast(`"${neuName}" eklendi!`);
+            const yeniK={id:genId(),name:neuName.trim(),passwort:neuPw.trim(),rolle:neuRolle};
+            dbInsert("benutzer",{id:yeniK.id,data:yeniK}).catch(e=>console.warn("Supabase hata:",e));
+            setBenutzerListe(p=>[...p,yeniK]);
+            setNeuName("");setNeuPw("");showToast(`"${neuName.trim()}" eklendi!`);
           }} style={{...btnPrimary,padding:"10px 24px"}}>+ Ekle</button>
         </div>
       </div>
