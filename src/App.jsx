@@ -92,11 +92,11 @@ const LEISTUNGSKATALOG = [
   ]},
 ];
 const WA_TEMPLATES = [
-  {id:"annahme",label:"📥 Bisiklet alındı",text:(k,a)=>`Hallo ${k.vorname}! Ihr Fahrrad (${a.fahrradModell}) wurde bei uns aufgenommen. Auftrag #${a.nummer}. Wir melden uns, sobald es fertig ist. – Drahtesel Plus`},
-  {id:"beginn",label:"🔧 İş başladı",text:(k,a)=>`Hallo ${k.vorname}! Wir haben mit der Reparatur Ihres Fahrrads (${a.fahrradModell}) begonnen. Voraussichtliche Fertigstellung: ${a.voraussichtlichFertig||"in Kürze"}. – Drahtesel Plus`},
-  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${k.vorname}! Ihr Fahrrad (${a.fahrradModell}) ist fertig und kann abgeholt werden. Gesamtbetrag: ${formatEuro(a.brutto||0)}. Wir freuen uns auf Ihren Besuch! – Drahtesel Plus`},
-  {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${k.vorname}! Ihr Fahrrad (${a.fahrradModell}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
-  {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${k.vorname}! Unser Kostenvoranschlag für Ihr Fahrrad (${a.fahrradModell}): ca. ${formatEuro(a.brutto||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
+  {id:"annahme",label:"📥 Bisiklet alındı",text:(k,a)=>`Hallo ${k?.vorname||""}! Ihr Fahrrad (${a?.fahrradModell||""}) wurde bei uns aufgenommen. Auftrag #${a?.nummer||""}. Wir melden uns, sobald es fertig ist. – Drahtesel Plus`},
+  {id:"beginn",label:"🔧 İş başladı",text:(k,a)=>`Hallo ${k?.vorname||""}! Wir haben mit der Reparatur Ihres Fahrrads (${a?.fahrradModell||""}) begonnen. Voraussichtliche Fertigstellung: ${a?.voraussichtlichFertig||"in Kürze"}. – Drahtesel Plus`},
+  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${k?.vorname||""}! Ihr Fahrrad (${a?.fahrradModell||""}) ist fertig und kann abgeholt werden. Gesamtbetrag: ${formatEuro(a?.brutto||0)}. Wir freuen uns auf Ihren Besuch! – Drahtesel Plus`},
+  {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${k?.vorname||""}! Ihr Fahrrad (${a?.fahrradModell||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
+  {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${k?.vorname||""}! Unser Kostenvoranschlag für Ihr Fahrrad (${a?.fahrradModell||""}): ca. ${formatEuro(a?.brutto||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
 ];
 
 function genId(){return Math.random().toString(36).slice(2,10);}
@@ -676,9 +676,11 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
 // ─── AUFTRAG DETAIL ───────────────────────────────────────────────────────────
 // ─── WA MESSAGE EDITOR ────────────────────────────────────────────────────────
 function WaMessageEditor({template,kunde,auftrag}){
-  const [msg,setMsg]=useState(template.text(kunde,auftrag));
-  // Reset when template changes
-  useState(()=>{ setMsg(template.text(kunde,auftrag)); },[template.id]);
+  const safeMsg=()=>{
+    try{return template.text(kunde||{},auftrag||{});}catch{return "";}
+  };
+  const [msg,setMsg]=useState(safeMsg);
+  useEffect(()=>{ setMsg(safeMsg()); },[template.id]);
 
   return(
     <div style={{background:COLORS.surface,borderRadius:10,padding:14,marginTop:4}}>
@@ -781,7 +783,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       )}
 
       {/* WHATSAPP ŞABLONLARI */}
-      {(kunde.whatsapp||kunde.telefon)&&(
+      {!!(kunde?.whatsapp||kunde?.telefon||kunde?.email)&&(
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",marginBottom:16}}>
           <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>💬 SCHNELLNACHRICHTEN</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:waTemplate?12:0}}>
