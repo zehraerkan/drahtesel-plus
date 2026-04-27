@@ -1642,6 +1642,11 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
     };}catch{return {};}
   });
   const FF=(k,v)=>setFirma(p=>{const n={...p,[k]:v};localStorage.setItem("dp_firma",JSON.stringify(n));return n;});
+  const [waTab,setWaTab]=useState(false);
+  const [twilioConfig,setTwilioConfig]=useState(()=>{
+    try{return JSON.parse(localStorage.getItem("dp_twilio")||"{}");}catch{return {};}
+  });
+  const TC=(k,v)=>setTwilioConfig(p=>{const n={...p,[k]:v};localStorage.setItem("dp_twilio",JSON.stringify(n));return n;});
 
   return(<div style={{maxWidth:600}}>
     <h2 style={{marginBottom:20}}>Einstellungen</h2>
