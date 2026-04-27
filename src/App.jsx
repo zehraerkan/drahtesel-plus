@@ -715,10 +715,12 @@ function WaMessageEditor({template,kunde,auftrag}){
 }
 
 function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onAbbruch,showToast}){
-  const [notizen,setNotizen]=useState(auftrag.notizen||"");
+  const [notizen,setNotizen]=useState(auftrag?.notizen||"");
   const [waTemplate,setWaTemplate]=useState(null);
+  const [zahlungModal,setZahlungModal]=useState(false);
+  const [zahlungsart,setZahlungsart]=useState("Bar");
   const printRef=useRef();
-  const st=STATUS[auftrag.status]||STATUS["Neu"];
+  const st=STATUS[auftrag?.status]||STATUS["Neu"];
   const statusFlow=["Neu","Genehmigt","In Arbeit","Fertig"];
   const istAbgerechnet=auftrag.status==="Abgerechnet";
 
