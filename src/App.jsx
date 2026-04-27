@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SUPA_URL = "https://dtpjypraefamxgssklgv.supabase.co";
@@ -9,7 +9,7 @@ const HEADERS = {
   "apikey": SUPA_KEY,
   "Authorization": `Bearer ${SUPA_KEY}`,
   "Prefer": "return=representation",
-};a
+};
 
 // ─── SUPABASE YARDIMCILARI ────────────────────────────────────────────────────
 async function dbGet(table) {
@@ -843,8 +843,10 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         <div className="kopf" style={{display:"flex",justifyContent:"space-between",marginBottom:24,alignItems:"flex-start"}}>
           <div className="logo-row" style={{display:"flex",alignItems:"center",gap:10}}>
             <img src={LOGO_SRC} alt="" style={{width:48,height:48,objectFit:"contain"}}/>
-            <div><div style={{fontWeight:700,fontSize:17,color:"#3d3db4",letterSpacing:1}}>DRAHTESEL PLUS</div>
-              <div style={{fontSize:11,color:"#666"}}>Fehrbellinerstr. 17 · 10119 Berlin · 030/246 37 912</div></div>
+            <div>
+              <div style={{fontWeight:700,fontSize:17,color:"#3d3db4",letterSpacing:1}}>{getFirma().zusatz||getFirma().name}</div>
+              <div style={{fontSize:11,color:"#666"}}>{getFirma().strasse} · {getFirma().plz} {getFirma().ort} · {getFirma().telefon}</div>
+            </div>
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:19,fontWeight:700}}>ARBEITSAUFTRAG</div>
@@ -917,8 +919,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           </>
         )}
         <div style={{marginTop:32,paddingTop:14,borderTop:"1px solid #ddd",fontSize:11,color:"#888",display:"flex",justifyContent:"space-between"}}>
-          {(()=>{const f=getFirma();return(<><div><strong>{f.name}</strong> · {f.strasse} · {f.plz} {f.ort}<br/>USt-IdNr: {f.ustId} · Steuernummer: {f.steuerNr}<br/>Geschäftsführer: {f.geschaeftsfuehrer}</div>
-          <div style={{textAlign:"right"}}>{f.bank}<br/>IBAN: {f.iban}<br/>BIC: {f.bic}</div></>);})()}
+          <div><strong>{getFirma().name}</strong> · {getFirma().strasse} · {getFirma().plz} {getFirma().ort}<br/>USt-IdNr: {getFirma().ustId} · Steuernummer: {getFirma().steuerNr}<br/>Geschäftsführer: {getFirma().geschaeftsfuehrer}</div>
+          <div style={{textAlign:"right"}}>{getFirma().bank}<br/>IBAN: {getFirma().iban}<br/>BIC: {getFirma().bic}</div>
         </div>
       </div>
 
@@ -1566,10 +1568,11 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:36}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <img src={LOGO_SRC} alt="" style={{width:50,height:50,objectFit:"contain"}}/>
-            {(()=>{const f=getFirma();return(<div><div style={{fontWeight:700,fontSize:18,color:"#3d3db4"}}>{f.zusatz||f.name}</div>
-              <div style={{fontSize:11,color:"#666"}}>{f.name} · {f.strasse} · {f.plz} {f.ort}</div>
-              <div style={{fontSize:11,color:"#666"}}>Tel: {f.telefon} · {f.email}</div>
-            </div>);})()}
+            <div>
+              <div style={{fontWeight:700,fontSize:18,color:"#3d3db4"}}>{getFirma().zusatz||getFirma().name}</div>
+              <div style={{fontSize:11,color:"#666"}}>{getFirma().name} · {getFirma().strasse} · {getFirma().plz} {getFirma().ort}</div>
+              <div style={{fontSize:11,color:"#666"}}>Tel: {getFirma().telefon} · {getFirma().email}</div>
+            </div>
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:22,fontWeight:700}}>RECHNUNG</div>
