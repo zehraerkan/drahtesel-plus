@@ -1064,10 +1064,15 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
   const [saving,setSaving]=useState(false);
   const [savedBisikletId,setSavedBisikletId]=useState(null);
+  // Geçici ID — kayıt öncesi fotoğraf çekmek için
+  const [tempId]=useState(()=>genId());
+
   return(
     <div style={{maxWidth:560}}>
       <h2 style={{marginBottom:4}}>Neues Fahrrad</h2>
       <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Für: {kunde.vorname} {kunde.nachname}</div>
+
+      {/* FAHRRAD BİLGİLERİ */}
       <div style={{background:`${COLORS.teal}15`,border:`1px solid ${COLORS.teal}44`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
         <div style={{color:COLORS.teal,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD-STAMMDATEN</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
@@ -1088,25 +1093,46 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
           <div><label style={labelStyle}>Reifengröße</label><input placeholder='z.B. 28"' value={form.reifengroesse} onChange={e=>F("reifengroesse",e.target.value)} style={inputStyle}/></div>
         </div>
       </div>
+
+      {/* DURUM & HASAR */}
       <div style={{marginBottom:16}}>
         <label style={labelStyle}>Allgemeiner Zustand bei Annahme</label>
         <select value={form.zustand} onChange={e=>F("zustand",e.target.value)} style={{...inputStyle,marginBottom:10}}>
           {["Sehr gut","Gut","Mittel","Schlecht","Sehr schlecht"].map(z=><option key={z}>{z}</option>)}
         </select>
         <label style={labelStyle}>Hasar-/Zustandsnotizen</label>
-        <textarea placeholder="z.B. Kratzer am Rahmen links, Sattel leicht gerissen …" value={form.hasarNotizen} onChange={e=>F("hasarNotizen",e.target.value)} style={{...inputStyle,height:80,resize:"vertical"}}/>
+        <textarea placeholder="z.B. Kratzer am Rahmen links, Sattel leicht gerissen …" value={form.hasarNotizen} onChange={e=>F("hasarNotizen",e.target.value)} style={{...inputStyle,height:70,resize:"vertical"}}/>
       </div>
-      <div style={{display:"flex",gap:12}}>
-        <button disabled={saving} onClick={async()=>{
-          if(!form.marke&&!form.modell)return alert("Bitte Marke oder Modell eingeben.");
-          setSaving(true);const saved=await onSave(form);if(saved?.id)setSavedBisikletId(saved.id);setSaving(false);
-        }} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichern...":"🚲 Fahrrad speichern"}</button>
-        <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
+
+      {/* FOTOĞRAFLAR — kayıt öncesi de eklenebilir */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:20}}>
+        <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:4}}>📸 FOTOĞRAFLAR</div>
+        <div style={{color:COLORS.muted,fontSize:11,marginBottom:12}}>Bisikletin genel görünümü ve hasarlı parçaların fotoğrafları</div>
+        <FotoGalerie entityType="bisiklet" entityId={savedBisikletId||tempId} maxFotos={5}/>
       </div>
-      {savedBisikletId&&(
-        <div style={{marginTop:20,background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px"}}>
-          <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>📸 FOTOĞRAF EKLE</div>
-          <FotoGalerie entityType="bisiklet" entityId={savedBisikletId} maxFotos={5}/>
+
+      {/* KAYDET */}
+      {!savedBisikletId ? (
+        <div style={{display:"flex",gap:12}}>
+          <button disabled={saving} onClick={async()=>{
+            if(!form.marke&&!form.modell)return alert("Bitte Marke oder Modell eingeben.");
+            setSaving(true);
+            const saved=await onSave({...form,tempFotoId:tempId});
+            if(saved?.id)setSavedBisikletId(saved.id);
+            setSaving(false);
+          }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>
+            {saving?"Speichern...":"🚲 Fahrrad speichern"}
+          </button>
+          <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
+        </div>
+      ) : (
+        <div style={{background:`${COLORS.green}18`,border:`1px solid ${COLORS.green}44`,borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:20}}>✅</span>
+          <div>
+            <div style={{fontWeight:600,color:COLORS.green}}>Fahrrad gespeichert!</div>
+            <div style={{color:COLORS.muted,fontSize:12}}>Fotoğraf ekleyebilir veya geri dönebilirsiniz.</div>
+          </div>
+          <button onClick={onAbbruch} style={{...btnSecondary,marginLeft:"auto"}}>← Zurück</button>
         </div>
       )}
     </div>
