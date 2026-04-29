@@ -40,7 +40,7 @@ async function dbDelete(table, id) {
 
 // ─── FOTOĞRAF YÜKLEME ────────────────────────────────────────────────────────
 async function uploadFoto(file, entityType, entityId) {
-  const ext = file.name.split(".").pop() || "jpg";
+  const ext = (file.name||"foto.jpg").split(".").pop()||"jpg";
   const path = `${entityType}/${entityId}/${genId()}.${ext}`;
   const r = await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, {
     method: "POST",
@@ -150,7 +150,7 @@ function rowToBenutzer(r){return{...r.data,id:r.id};}
 export default function DrahteselApp() {
   const startScreen=new URLSearchParams(window.location.search).get("mode")==="kunde"?"kunde-selbst":"login";
   const [screen,setScreen]=useState(startScreen);
-  const isMobile=window.innerWidth<768;
+  const [isMobile]=useState(()=>window.innerWidth<768);
   const [benutzer,setBenutzer]=useState(null);
   const [benutzerListe,setBenutzerListe]=useState(()=>{
     // Önce localStorage'dan yükle (Supabase yüklenene kadar)
@@ -203,10 +203,13 @@ export default function DrahteselApp() {
       const [kR,bR,aR,rR] = await Promise.all([
         dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"),
       ]);
-      setKunden(kR.map(rowToKunde));
+      const neueKunden=kR.map(rowToKunde);
+      setKunden(neueKunden);
       setBisikletler(bR.map(rowToBisiklet));
       setAuftraege(aR.map(rowToAuftrag));
       setRechnungen(rR.map(rowToRechnung));
+      // selKunde güncelle
+      setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
     finally { setLaden(false); }
   }, [benutzer]);
@@ -263,7 +266,7 @@ export default function DrahteselApp() {
   async function auftragNotizenAendern(id,notizen) {
     const a=auftraege.find(x=>x.id===id); if(!a)return;
     const {id:_,kundeId,bisikletId,status,erstellt,...data}=a;
-    await dbUpdate("auftraege",id,{data:{...data,notizen}});
+    try{await dbUpdate("auftraege",id,{data:{...data,notizen}});}catch(e){console.warn("Notizen update failed",e);}
     setAuftraege(p=>p.map(x=>x.id===id?{...x,notizen}:x));
     setSelAuftrag(p=>p?{...p,notizen}:p);
   }
@@ -314,7 +317,7 @@ export default function DrahteselApp() {
       <main style={{flex:1,overflow:"auto",padding:isMobile?"60px 16px 24px":"60px 32px 24px"}}>
         {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
-          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setScreen("auftrag-detail");}}/>}
+          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setScreen("auftrag-detail");}}/>}
         {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege}
           onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}/>}
         {screen==="kunde-detail"&&selKunde&&<KundeDetail
@@ -385,8 +388,8 @@ export default function DrahteselApp() {
         {screen==="rechnung-detail"&&selRechnung&&<RechnungDetail
           rechnung={selRechnung} kunde={kunden.find(k=>k.id===selRechnung.kundeId)}
           onAbbruch={()=>setScreen(selAuftrag?"auftrag-detail":"rechnungen")}
-          onLoeschen={async(id)=>{await rechnungLoeschen(id);setScreen("rechnungen");showToast("Rechnung gelöscht.");}}
-          onAktualisieren={async(r)=>{await rechnungAktualisieren(r);setSelRechnung(r);showToast("Gespeichert!");}}
+          onLoeschen={async(id)=>{try{await rechnungLoeschen(id);setScreen("rechnungen");showToast("Rechnung gelöscht.");}catch(e){showToast("Fehler beim Löschen","err");}}}
+          onAktualisieren={async(r)=>{try{await rechnungAktualisieren(r);setSelRechnung(r);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
           showToast={showToast}/>}
         {screen==="katalog"&&<KatalogScreen/>}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden}/>}
@@ -705,7 +708,7 @@ function WaMessageEditor({template,kunde,auftrag}){
     try{return template.text(kunde||{},auftrag||{});}catch{return "";}
   };
   const [msg,setMsg]=useState(safeMsg);
-  useEffect(()=>{ setMsg(safeMsg()); },[template.id]);
+  useEffect(()=>{ try{setMsg(template.text(kunde||{},auftrag||{}));}catch{} },[template.id]);
 
   return(
     <div style={{background:COLORS.surface,borderRadius:10,padding:14,marginTop:4}}>
@@ -763,7 +766,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
     .badge{display:inline-block;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600;}
     .footer{margin-top:40px;padding-top:14px;border-top:1px solid #ddd;font-size:11px;color:#888;display:flex;justify-content:space-between;}
     </style></head><body>${printRef.current.innerHTML}</body></html>`);
-    win.document.close();setTimeout(()=>win.print(),500);
+    win.document.close();setTimeout(()=>{try{win.print();}catch{win.focus();}},500);
   }
 
   return(
@@ -971,7 +974,7 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
   useEffect(()=>{
     if(!entityId)return;
     getFotos(entityType,entityId).then(setFotos).catch(()=>{});
-  },[entityId]);
+  },[entityId,entityType]);
 
   async function handleFiles(files){
     if(!files||!files.length)return;
@@ -985,14 +988,17 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
         const url=await uploadFoto(file,entityType,entityId);
         setFotos(p=>[...p,{id:genId(),url,entity_type:entityType,entity_id:entityId,erstellt:heute()}]);
       }catch(e){
-        // Fallback: base64 olarak sakla
-        const reader=new FileReader();
-        reader.onload=ev=>{
-          const b64url=ev.target.result;
-          const fotoObj={id:genId(),url:b64url,entity_type:entityType,entity_id:entityId,erstellt:heute(),local:true};
-          setFotos(p=>[...p,fotoObj]);
-        };
-        reader.readAsDataURL(file);
+        // Fallback: base64 olarak cihazda sakla
+        try{
+          const reader=new FileReader();
+          reader.onload=ev=>{
+            const b64url=ev.target.result;
+            const fotoObj={id:genId(),url:b64url,entity_type:entityType,entity_id:entityId,erstellt:heute(),local:true};
+            setFotos(p=>[...p,fotoObj]);
+            showToastGlobal("Fotoğraf cihaza kaydedildi (çevrimdışı)","ok");
+          };
+          reader.readAsDataURL(file);
+        }catch(e2){showToastGlobal("Fotoğraf yüklenemedi","err");}
       }
     }
     setYukleniyor(false);
@@ -1414,7 +1420,7 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
     if(zeitraum==="30")cutoff.setDate(cutoff.getDate()-30);
     else if(zeitraum==="90")cutoff.setDate(cutoff.getDate()-90);
     else if(zeitraum==="365")cutoff.setDate(cutoff.getDate()-365);
-    gefRechnung=rechnungen.filter(r=>erstelltZuDate(r.erstellt)>=cutoff);
+    gefRechnung=rechnungen.filter(r=>r.erstellt&&erstelltZuDate(r.erstellt)>=cutoff);
   }
 
   const gesamtUmsatz=gefRechnung.reduce((s,r)=>s+(+r.brutto||0),0);
