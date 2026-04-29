@@ -421,7 +421,7 @@ function LoginScreen({benutzerListe,onLogin,onKundeLogin}){
         <div style={{textAlign:"center",color:COLORS.muted,fontSize:12}}>— oder —</div>
         <button onClick={onKundeLogin} style={{...btnSecondary,fontSize:13}}>Als Kunde Daten eintragen →</button>
       </div>
-      <div style={{color:COLORS.muted,fontSize:11}}>Demo: Ömer Colak / 1234</div>
+
     </div>
   );
 }
