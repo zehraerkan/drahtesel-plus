@@ -181,7 +181,10 @@ export default function DrahteselApp() {
     try {
       const rows = await dbGet("benutzer");
       if (rows.length > 0) {
-        setBenutzerListe(rows.map(rowToBenutzer));
+        const liste = rows.map(rowToBenutzer);
+        setBenutzerListe(liste);
+        // localStorage'ı da güncelle
+        try{localStorage.setItem("dp_users",JSON.stringify(liste));}catch{}
       } else {
         // İlk çalıştırma — varsayılan kullanıcıları Supabase'e kaydet
         const defaults = [
@@ -190,8 +193,12 @@ export default function DrahteselApp() {
         ];
         await Promise.all(defaults.map(u=>dbInsert("benutzer",{id:u.id,data:u})));
         setBenutzerListe(defaults);
+        try{localStorage.setItem("dp_users",JSON.stringify(defaults));}catch{}
       }
-    } catch(e){ console.warn("Benutzer yüklenemedi:",e.message); }
+    } catch(e){
+      console.warn("Supabase bağlantısı yok, localStorage kullanılıyor:",e.message);
+      // localStorage fallback — zaten init'te yüklendi
+    }
   }, []);
 
   useEffect(()=>{ ladeBenutzer(); },[ladeBenutzer]);
@@ -1885,7 +1892,14 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={{background:u.rolle==="admin"?`${COLORS.accent}22`:`${COLORS.blue}22`,color:u.rolle==="admin"?COLORS.accent:COLORS.blue,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{u.rolle}</span>
-          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`)){dbDelete("benutzer",u.id).catch(()=>{});setBenutzerListe(p=>p.filter(x=>x.id!==u.id));}}}
+          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`)){
+              dbDelete("benutzer",u.id).catch(()=>{});
+              setBenutzerListe(p=>{
+                const yeni=p.filter(x=>x.id!==u.id);
+                try{localStorage.setItem("dp_users",JSON.stringify(yeni));}catch{}
+                return yeni;
+              });
+            }}}
             style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:18,padding:"0 4px"}}>×</button>}
         </div>
       </div>))}
@@ -1908,9 +1922,15 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
           <button onClick={()=>{
             if(!neuName.trim()||!neuPw.trim())return alert("Ad ve şifre zorunludur.");
             const yeniK={id:genId(),name:neuName.trim(),passwort:neuPw.trim(),rolle:neuRolle};
-            dbInsert("benutzer",{id:yeniK.id,data:yeniK}).catch(e=>console.warn("Supabase hata:",e));
-            setBenutzerListe(p=>[...p,yeniK]);
-            setNeuName("");setNeuPw("");showToast(`"${neuName.trim()}" eklendi!`);
+            dbInsert("benutzer",{id:yeniK.id,data:yeniK})
+              .then(()=>showToast(`"${yeniK.name}" Supabase'e kaydedildi ✓`))
+              .catch(e=>{console.warn("Supabase hata:",e);showToast("Supabase'e kaydedilemedi, sadece lokal!","err");});
+            setBenutzerListe(p=>{
+              const yeni=[...p,yeniK];
+              try{localStorage.setItem("dp_users",JSON.stringify(yeni));}catch{}
+              return yeni;
+            });
+            setNeuName("");setNeuPw("");
           }} style={{...btnPrimary,padding:"10px 24px"}}>+ Ekle</button>
         </div>
       </div>
