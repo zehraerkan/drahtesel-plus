@@ -145,6 +145,7 @@ function rowToBisiklet(r){return{...r.data,id:r.id,kundeId:r.kunde_id,erstellt:r
 function rowToAuftrag(r){return{...r.data,id:r.id,kundeId:r.kunde_id,bisikletId:r.bisiklet_id,status:r.status,erstellt:r.erstellt};}
 function rowToRechnung(r){return{...r.data,id:r.id,kundeId:r.kunde_id,auftragId:r.auftrag_id,erstellt:r.erstellt};}
 function rowToBenutzer(r){return{...r.data,id:r.id};}
+function rowToEnvanter(r){return{...r.data,id:r.id,durum:r.durum,erstellt:r.erstellt};}
 
 // ─── HAUPTKOMPONENTE ─────────────────────────────────────────────────────────
 export default function DrahteselApp() {
@@ -164,6 +165,7 @@ export default function DrahteselApp() {
     ];
   });
   const [kunden,setKunden]=useState([]);
+  const [envanter,setEnvanter]=useState([]);
   const [bisikletler,setBisikletler]=useState([]);
   const [auftraege,setAuftraege]=useState([]);
   const [rechnungen,setRechnungen]=useState([]);
@@ -207,15 +209,15 @@ export default function DrahteselApp() {
     if (!benutzer) return;
     setLaden(true);
     try {
-      const [kR,bR,aR,rR] = await Promise.all([
-        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"),
+      const [kR,bR,aR,rR,eR] = await Promise.all([
+        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"),
       ]);
       const neueKunden=kR.map(rowToKunde);
       setKunden(neueKunden);
       setBisikletler(bR.map(rowToBisiklet));
       setAuftraege(aR.map(rowToAuftrag));
       setRechnungen(rR.map(rowToRechnung));
-      // selKunde güncelle
+      setEnvanter(eR.map(rowToEnvanter));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
     finally { setLaden(false); }
@@ -277,6 +279,23 @@ export default function DrahteselApp() {
     setAuftraege(p=>p.map(x=>x.id===id?{...x,notizen}:x));
     setSelAuftrag(p=>p?{...p,notizen}:p);
   }
+  // ── Envanter CRUD ─────────────────────────────────────────────────────────
+  async function envanterHinzufuegen(e) {
+    const id=genId(); const erstellt=heute();
+    const neu={...e,id,erstellt,durum:e.durum||"Im Laden"};
+    await dbInsert("envanter",{id,durum:neu.durum,erstellt,data:e});
+    setEnvanter(p=>[neu,...p]); return neu;
+  }
+  async function envanterAktualisieren(e) {
+    const {id,durum,erstellt,...data}=e;
+    await dbUpdate("envanter",id,{durum,data});
+    setEnvanter(p=>p.map(x=>x.id===id?e:x));
+  }
+  async function envanterLoeschen(id) {
+    await dbDelete("envanter",id);
+    setEnvanter(p=>p.filter(x=>x.id!==id));
+  }
+
   async function rechnungLoeschen(id) {
     await dbDelete("rechnungen",id);
     setRechnungen(p=>p.filter(x=>x.id!==id));
@@ -322,7 +341,7 @@ export default function DrahteselApp() {
       {laden&&<div style={{position:"fixed",top:0,left:0,right:0,height:3,background:COLORS.accent,zIndex:999,animation:"pulse 1s infinite"}}/>}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
       <main style={{flex:1,overflow:"auto",padding:isMobile?"60px 16px 24px":"60px 32px 24px"}}>
-        {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} benutzer={benutzer} setScreen={setScreen}/>}
+        {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
           onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setScreen("auftrag-detail");}}/>}
         {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege}
@@ -399,6 +418,12 @@ export default function DrahteselApp() {
           onAktualisieren={async(r)=>{try{await rechnungAktualisieren(r);setSelRechnung(r);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
           showToast={showToast}/>}
         {screen==="katalog"&&<KatalogScreen/>}
+        {screen==="envanter"&&<EnvanterScreen
+          envanter={envanter}
+          onEkle={async(e)=>{try{await envanterHinzufuegen(e);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onGuncelle={async(e)=>{try{await envanterAktualisieren(e);showToast("Güncellendi!");}catch(err){showToast("Hata","err");}}}
+          onSil={async(id)=>{try{await envanterLoeschen(id);showToast("Silindi.");}catch(err){showToast("Hata","err");}}}
+        />}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden}/>}
         {screen==="einstellungen"&&<EinstellungenScreen benutzer={benutzer} benutzerListe={benutzerListe} setBenutzerListe={setBenutzerListe} showToast={showToast}/>}
       </main>
@@ -477,6 +502,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile}){
     {id:"kunden",label:"Kunden & Fahrräder",icon:"👥"},
     {id:"rechnungen",label:"Rechnungen",icon:"🧾"},
     {id:"raporlama",label:"Raporlama",icon:"📊"},
+    {id:"envanter",label:"Fahrrad-Lager",icon:"🏪"},
     {id:"katalog",label:"Leistungskatalog",icon:"📋"},
     {id:"einstellungen",label:"Einstellungen",icon:"⚙"},
   ];
@@ -504,7 +530,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile}){
     </aside>
   );
 }
-function Dashboard({kunden,auftraege,rechnungen,benutzer,setScreen}){
+function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
   const gesamt=rechnungen.reduce((s,r)=>s+(r.brutto||0),0);
   const offene=auftraege.filter(a=>["Neu","Genehmigt","In Arbeit"].includes(a.status));
   const fertige=auftraege.filter(a=>a.status==="Fertig");
@@ -518,6 +544,7 @@ function Dashboard({kunden,auftraege,rechnungen,benutzer,setScreen}){
           {label:"Fertig (nicht abger.)",wert:fertige.length,icon:"✅",farbe:COLORS.green,click:()=>setScreen("auftraege")},
           {label:"Kunden gesamt",wert:kunden.length,icon:"👥",farbe:COLORS.blue},
           {label:"Umsatz gesamt",wert:formatEuro(gesamt),icon:"💶",farbe:COLORS.accent},
+          {label:"Satılık Bisiklet",wert:(envanter||[]).filter(e=>["Im Laden","Im Lager","Satışa hazır"].includes(e.durum)).length,icon:"🏪",farbe:COLORS.teal,click:()=>setScreen("envanter")},
         ].map(s=>(
           <div key={s.label} onClick={s.click} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",cursor:s.click?"pointer":"default"}}>
             <div style={{fontSize:24,marginBottom:8}}>{s.icon}</div>
@@ -1991,3 +2018,295 @@ const inputStyle={background:COLORS.surface,border:`1px solid ${COLORS.border}`,
 const btnPrimary={background:COLORS.accent,color:"#000",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const btnSecondary={background:"transparent",color:COLORS.text,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 16px",fontWeight:500,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const labelStyle={display:"block",color:COLORS.muted,fontSize:11,fontWeight:600,letterSpacing:.5,marginBottom:6};
+
+// ─── ENVANTER SCREEN ──────────────────────────────────────────────────────────
+const DURUM_CONFIG = {
+  "Im Laden":     {farbe:"#4ade80", bg:"#4ade8022", label:"🏪 Im Laden"},
+  "Im Lager":     {farbe:"#60a5fa", bg:"#60a5fa22", label:"📦 Im Lager"},
+  "Satışa hazır": {farbe:"#2dd4bf", bg:"#2dd4bf22", label:"✨ Satışa hazır"},
+  "Serviste":     {farbe:"#fb923c", bg:"#fb923c22", label:"🔧 Serviste"},
+  "Satıldı":      {farbe:"#7a7f9a", bg:"#7a7f9a22", label:"✓ Satıldı"},
+};
+const SCHALTUNG_OPTIONEN = ["Keine","Shimano","SRAM","Campagnolo","Sturmey-Archer","Andere"];
+const BREMS_OPTIONEN = ["Felgenbremse","Scheibenbremse (mechanisch)","Scheibenbremse (hydraulisch)","Rücktrittbremse","V-Brake","Cantilever","Andere"];
+const RAHMEN_GROESSEN = ['44', '45', '46', '47', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63', '64', '65', '66', '67', '68', '69', '70', 'Universalgröße'];
+
+function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
+  const [ansicht,setAnsicht]=useState("liste"); // liste | neu | detail
+  const [selItem,setSelItem]=useState(null);
+  const [filterDurum,setFilterDurum]=useState("alle");
+  const [suche,setSuche]=useState("");
+
+  const gefiltert=envanter.filter(e=>{
+    const durumOk=filterDurum==="alle"||e.durum===filterDurum;
+    const sucheOk=!suche||`${e.marke||""} ${e.modell||""} ${e.farbe||""} ${e.rahmennummer||""}`.toLowerCase().includes(suche.toLowerCase());
+    return durumOk&&sucheOk;
+  });
+
+  if(ansicht==="neu") return <EnvanterForm
+    onSave={async(e)=>{await onEkle(e);setAnsicht("liste");}}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  if(ansicht==="detail"&&selItem) return <EnvanterDetail
+    item={selItem}
+    onGuncelle={async(e)=>{await onGuncelle(e);setSelItem(e);}}
+    onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  // ÖZET KARTLAR
+  const istatistik=Object.entries(DURUM_CONFIG).map(([d,c])=>({
+    durum:d, config:c, adet:envanter.filter(e=>e.durum===d).length
+  }));
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{fontSize:20,fontWeight:700}}>🏪 Fahrrad-Lager</h2>
+        <button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Neues Fahrrad</button>
+      </div>
+
+      {/* İSTATİSTİK KARTLAR */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
+        {istatistik.map(({durum,config,adet})=>(
+          <div key={durum} onClick={()=>setFilterDurum(filterDurum===durum?"alle":durum)}
+            style={{background:COLORS.card,border:`2px solid ${filterDurum===durum?config.farbe:COLORS.border}`,borderRadius:12,padding:"14px 16px",cursor:"pointer",transition:"border-color .15s"}}>
+            <div style={{fontSize:24,fontWeight:700,color:config.farbe,fontFamily:"'IBM Plex Mono'"}}>{adet}</div>
+            <div style={{color:COLORS.muted,fontSize:12,marginTop:4}}>{config.label}</div>
+          </div>
+        ))}
+        <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 16px"}}>
+          <div style={{fontSize:24,fontWeight:700,color:COLORS.accent,fontFamily:"'IBM Plex Mono'"}}>{envanter.length}</div>
+          <div style={{color:COLORS.muted,fontSize:12,marginTop:4}}>📦 Toplam</div>
+        </div>
+      </div>
+
+      {/* ARAMA & FİLTRE */}
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <input placeholder="Marka, model, renk ara …" value={suche} onChange={e=>setSuche(e.target.value)}
+          style={{...inputStyle,flex:1,minWidth:200}}/>
+        <button onClick={()=>setFilterDurum("alle")}
+          style={{...btnSecondary,fontSize:12,color:filterDurum==="alle"?COLORS.accent:COLORS.muted,borderColor:filterDurum==="alle"?COLORS.accent:COLORS.border}}>
+          Tümü ({envanter.length})
+        </button>
+      </div>
+
+      {/* BİSİKLET LİSTESİ */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {gefiltert.map(item=>{
+          const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Mevcut"];
+          return(
+            <div key={item.id} onClick={()=>{setSelItem(item);setAnsicht("detail");}}
+              style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"border-color .15s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+                  <span style={{fontWeight:700,fontSize:15}}>{item.marke} {item.modell}</span>
+                  <span style={{background:dc.bg,color:dc.farbe,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{dc.label}</span>
+                </div>
+                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                  {item.farbe&&<span style={{color:COLORS.muted,fontSize:12}}>🎨 {item.farbe}</span>}
+                  {item.rahmenGroesse&&<span style={{color:COLORS.muted,fontSize:12}}>📐 {item.rahmenGroesse}</span>}
+                  {item.uretimYili&&<span style={{color:COLORS.muted,fontSize:12}}>📅 {item.uretimYili}</span>}
+                  {item.schaltung&&item.schaltung!=="Keine"&&<span style={{color:COLORS.muted,fontSize:12}}>⚙️ {item.schaltung}</span>}
+                  {item.bremsart&&<span style={{color:COLORS.muted,fontSize:12}}>🛑 {item.bremsart}</span>}
+                </div>
+              </div>
+              <div style={{textAlign:"right",marginLeft:16}}>
+                {item.preis&&<div style={{fontWeight:700,color:COLORS.accent,fontFamily:"'IBM Plex Mono'",fontSize:16}}>{formatEuro(+item.preis||0)}</div>}
+                {item.rahmennummer&&<div style={{color:COLORS.muted,fontSize:11,marginTop:4}}>#{item.rahmennummer}</div>}
+              </div>
+            </div>
+          );
+        })}
+        {!gefiltert.length&&(
+          <div style={{textAlign:"center",padding:48,color:COLORS.muted}}>
+            <div style={{fontSize:40,marginBottom:12}}>🚲</div>
+            <div style={{fontSize:14}}>Henüz bisiklet eklenmemiş.</div>
+            <button onClick={()=>setAnsicht("neu")} style={{...btnPrimary,marginTop:16}}>+ İlk bisikleti ekle</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ENVANTER FORM ────────────────────────────────────────────────────────────
+function EnvanterForm({item,onSave,onAbbruch}){
+  const [form,setForm]=useState(item||{
+    marke:"",modell:"",farbe:"",rahmenGroesse:"M (51-55cm)",rahmennummer:"",
+    uretimYili:"",schaltung:"Shimano",gangAnzahl:"",bremsart:"Scheibenbremse (hydraulisch)",
+    durum:"Im Laden",preis:"",notizen:""
+  });
+  const F=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const [saving,setSaving]=useState(false);
+  const isEdit=!!item;
+
+  return(
+    <div style={{maxWidth:640}}>
+      <h2 style={{marginBottom:4}}>{isEdit?"Fahrrad bearbeiten":"Neues Fahrrad"}</h2>
+      <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Lager-Eingang erfassen</div>
+
+      {/* TEMEL BİLGİLER */}
+      <div style={{background:`${COLORS.blue}15`,border:`1px solid ${COLORS.blue}44`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+        <div style={{color:COLORS.blue,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD-DATEN</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={labelStyle}>Marke *</label>
+            <input placeholder="z.B. Trek, PEGASUS, Cube" value={form.marke} onChange={e=>F("marke",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Modell *</label>
+            <input placeholder="z.B. FX3, Solero, Attain" value={form.modell} onChange={e=>F("modell",e.target.value)} style={inputStyle}/></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={labelStyle}>Farbe</label>
+            <input placeholder="z.B. Schwarz matt" value={form.farbe} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Üretim Yılı</label>
+            <input placeholder="z.B. 2023" value={form.uretimYili} onChange={e=>F("uretimYili",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Rahmennummer</label>
+            <input placeholder="optional" value={form.rahmennummer} onChange={e=>F("rahmennummer",e.target.value)} style={inputStyle}/></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div><label style={labelStyle}>Rahmengröße</label>
+            <select value={form.rahmenGroesse} onChange={e=>F("rahmenGroesse",e.target.value)} style={inputStyle}>
+              {RAHMEN_GROESSEN.map(g=><option key={g}>{g}</option>)}
+            </select></div>
+          <div><label style={labelStyle}>Typ</label>
+            <select value={form.typ||"Herrenrad"} onChange={e=>F("typ",e.target.value)} style={inputStyle}>
+              {["Herrenrad","Damenrad","Cityrad","Mountainbike","E-Bike","Rennrad","Kinderrad","Lastenrad","Sonstiges"].map(t=><option key={t}>{t}</option>)}
+            </select></div>
+        </div>
+      </div>
+
+      {/* TEKNİK ÖZELLİKLER */}
+      <div style={{background:`${COLORS.purple}15`,border:`1px solid ${COLORS.purple}44`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+        <div style={{color:COLORS.purple,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>⚙️ TEKNİK ÖZELLİKLER</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+          <div>
+            <label style={labelStyle}>Schaltung</label>
+            <select value={SCHALTUNG_OPTIONEN.includes(form.schaltung)?form.schaltung:"Andere"}
+              onChange={e=>{if(e.target.value!=="Andere")F("schaltung",e.target.value);else F("schaltung","");}} style={{...inputStyle,marginBottom:4}}>
+              {SCHALTUNG_OPTIONEN.map(s=><option key={s}>{s}</option>)}
+            </select>
+            {(!SCHALTUNG_OPTIONEN.includes(form.schaltung)||form.schaltung==="")&&(
+              <input placeholder="Manuel giriş …" value={form.schaltung} onChange={e=>F("schaltung",e.target.value)} style={inputStyle}/>
+            )}
+          </div>
+          <div><label style={labelStyle}>Gang Sayısı</label>
+            <input placeholder="z.B. 21, 11" value={form.gangAnzahl} onChange={e=>F("gangAnzahl",e.target.value)} style={inputStyle}/></div>
+          <div>
+            <label style={labelStyle}>Bremsart</label>
+            <select value={BREMS_OPTIONEN.includes(form.bremsart)?form.bremsart:"Andere"}
+              onChange={e=>{if(e.target.value!=="Andere")F("bremsart",e.target.value);else F("bremsart","");}} style={{...inputStyle,marginBottom:4}}>
+              {BREMS_OPTIONEN.map(b=><option key={b}>{b}</option>)}
+            </select>
+            {(!BREMS_OPTIONEN.includes(form.bremsart)||form.bremsart==="")&&(
+              <input placeholder="Manuel giriş …" value={form.bremsart} onChange={e=>F("bremsart",e.target.value)} style={inputStyle}/>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* FİYAT & DURUM */}
+      <div style={{background:`${COLORS.accent}15`,border:`1px solid ${COLORS.accent}44`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+        <div style={{color:COLORS.accent,fontWeight:600,fontSize:12,letterSpacing:.5,marginBottom:12}}>💶 FİYAT & DURUM</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div><label style={labelStyle}>Satış Fiyatı (€)</label>
+            <input type="number" placeholder="0.00" min={0} step={0.5} value={form.preis} onChange={e=>F("preis",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Durum</label>
+            <select value={form.durum} onChange={e=>F("durum",e.target.value)} style={inputStyle}>
+              {Object.entries(DURUM_CONFIG).map(([d,c])=><option key={d} value={d}>{c.label}</option>)}
+            </select></div>
+        </div>
+        <div><label style={labelStyle}>Notizen</label>
+          <textarea placeholder="Ek bilgiler, özellikler, açıklama …" value={form.notizen||""} onChange={e=>F("notizen",e.target.value)}
+            style={{...inputStyle,height:70,resize:"vertical"}}/></div>
+      </div>
+
+      <div style={{display:"flex",gap:12}}>
+        <button disabled={saving} onClick={async()=>{
+          if(!form.marke||!form.modell)return alert("Marke und Modell sind Pflichtfelder.");
+          setSaving(true);
+          await onSave({...form,durum:form.durum||"Mevcut"});
+          setSaving(false);
+        }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>
+          {saving?"Speichern...":isEdit?"💾 Aktualisieren":"🚲 Fahrrad hinzufügen"}
+        </button>
+        <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── ENVANTER DETAIL ──────────────────────────────────────────────────────────
+function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
+  const [editModus,setEditModus]=useState(false);
+  const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Mevcut"];
+
+
+  if(editModus) return <EnvanterForm item={item}
+    onSave={async(e)=>{await onGuncelle({...e,id:item.id,erstellt:item.erstellt});setEditModus(false);}}
+    onAbbruch={()=>setEditModus(false)}/>;
+
+  return(
+    <div style={{maxWidth:640}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
+        <div>
+          <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>{item.marke} {item.modell}</h2>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <span style={{background:dc.bg,color:dc.farbe,borderRadius:20,padding:"3px 12px",fontSize:12,fontWeight:600}}>{dc.label}</span>
+            {item.erstellt&&<span style={{color:COLORS.muted,fontSize:12}}>Eklenme: {item.erstellt}</span>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setEditModus(true)} style={btnSecondary}>✏️ Düzenle</button>
+          <button onClick={()=>{if(confirm(`"${item.marke} ${item.modell}" silinsin mi?`))onSil(item.id);}}
+            style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
+          <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
+        </div>
+      </div>
+
+      {/* DURUM HIZLI DEĞİŞTİR */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",marginBottom:16}}>
+        <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>DURUM GÜNCELLE</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {Object.entries(DURUM_CONFIG).map(([d,c])=>(
+            <button key={d} onClick={()=>onGuncelle({...item,durum:d})}
+              style={{padding:"6px 16px",borderRadius:20,border:`2px solid ${item.durum===d?c.farbe:COLORS.border}`,
+                background:item.durum===d?c.bg:"transparent",color:item.durum===d?c.farbe:COLORS.muted,
+                cursor:"pointer",fontSize:12,fontWeight:item.durum===d?700:400,transition:"all .15s"}}>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+        <InfoKarte titel="🚲 Bisiklet Bilgileri">
+          {item.farbe&&<InfoZeile label="Farbe" wert={item.farbe}/>}
+          {item.typ&&<InfoZeile label="Typ" wert={item.typ}/>}
+          {item.rahmenGroesse&&<InfoZeile label="Rahmengröße" wert={item.rahmenGroesse}/>}
+          {item.rahmennummer&&<InfoZeile label="Rahmennr." wert={item.rahmennummer}/>}
+          {item.uretimYili&&<InfoZeile label="Üretim Yılı" wert={item.uretimYili}/>}
+        </InfoKarte>
+        <InfoKarte titel="⚙️ Teknik Özellikler">
+          {item.schaltung&&<InfoZeile label="Schaltung" wert={item.schaltung}/>}
+          {item.gangAnzahl&&<InfoZeile label="Gang Sayısı" wert={item.gangAnzahl}/>}
+          {item.bremsart&&<InfoZeile label="Bremsart" wert={item.bremsart}/>}
+        </InfoKarte>
+      </div>
+
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+        <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>💶 FİYAT BİLGİSİ</div>
+        <div>
+          <div style={{color:COLORS.muted,fontSize:11,marginBottom:4}}>SATIŞ FİYATI</div>
+          <div style={{fontWeight:700,fontSize:28,color:COLORS.accent,fontFamily:"'IBM Plex Mono'"}}>{item.preis?formatEuro(+item.preis):"-"}</div>
+        </div>
+      </div>
+
+      {item.notizen&&(
+        <InfoKarte titel="📝 Notizen">
+          <p style={{color:COLORS.muted,fontSize:13,margin:0,whiteSpace:"pre-wrap"}}>{item.notizen}</p>
+        </InfoKarte>
+      )}
+    </div>
+  );
+}
