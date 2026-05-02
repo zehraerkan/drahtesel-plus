@@ -267,6 +267,15 @@ export default function DrahteselApp() {
     await dbInsert("auftraege",{id,kunde_id:kundeId,bisiklet_id:bisikletId||null,status:"Neu",erstellt,data:{...rest,brutto,netto,mwst}});
     setAuftraege(p=>[neu,...p]); return neu;
   }
+  async function auftragLoeschen(id) {
+    await dbDelete("auftraege",id);
+    setAuftraege(p=>p.filter(x=>x.id!==id));
+  }
+  async function auftragAktualisieren(a) {
+    const {id,kundeId,bisikletId,status,erstellt,...data}=a;
+    await dbUpdate("auftraege",id,{data});
+    setAuftraege(p=>p.map(x=>x.id===id?a:x));
+  }
   async function auftragStatusAendern(id,status) {
     await dbUpdate("auftraege",id,{status});
     setAuftraege(p=>p.map(a=>a.id===id?{...a,status}:a));
@@ -392,6 +401,8 @@ export default function DrahteselApp() {
         {screen==="auftrag-detail"&&selAuftrag&&<AuftragDetail
           auftrag={selAuftrag}
           kunde={kunden.find(k=>k.id===selAuftrag.kundeId)||{}}
+          onLoeschen={async(id)=>{try{await auftragLoeschen(id);setScreen("auftraege");showToast("Auftrag gelöscht.");}catch(e){showToast("Fehler","err");}}}
+          onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
           onStatusChange={async(id,st)=>{try{await auftragStatusAendern(id,st);showToast(`Status: ${st}`);}catch(e){showToast("Fehler","err");}}}
           onNotizenChange={async(id,n)=>{try{await auftragNotizenAendern(id,n);}catch(e){showToast("Fehler","err");}}}
           onRechnungErstellen={async(a)=>{
@@ -776,7 +787,7 @@ function WaMessageEditor({template,kunde,auftrag}){
   );
 }
 
-function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onAbbruch,showToast}){
+function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast}){
   const [notizen,setNotizen]=useState(auftrag?.notizen||"");
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
@@ -812,6 +823,10 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnSecondary}>🖨️ Drucken</button>
+          {onLoeschen&&auftrag.status==="Abgerechnet"&&(
+            <button onClick={()=>{if(confirm("Auftrag silinsin mi?"))onLoeschen(auftrag.id);}}
+              style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
+          )}
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
         </div>
       </div>
