@@ -2160,10 +2160,15 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
   const [filterDurum,setFilterDurum]=useState("alle");
   const [suche,setSuche]=useState("");
 
-  const gefiltert=envanter.filter(e=>{
+  const gefiltert=[...envanter].filter(e=>{
     const durumOk=filterDurum==="alle"||e.durum===filterDurum;
     const sucheOk=!suche||`${e.marke||""} ${e.modell||""} ${e.farbe||""} ${e.rahmennummer||""}`.toLowerCase().includes(suche.toLowerCase());
     return durumOk&&sucheOk;
+  }).sort((a,b)=>{
+    // Satıldı en sona
+    if(a.durum==="Satıldı"&&b.durum!=="Satıldı") return 1;
+    if(a.durum!=="Satıldı"&&b.durum==="Satıldı") return -1;
+    return 0;
   });
 
   if(ansicht==="neu") return <EnvanterForm
@@ -2215,16 +2220,18 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
 
       {/* BİSİKLET LİSTESİ */}
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {gefiltert.map(item=>{
+        {gefiltert.map((item,idx)=>{
           const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Mevcut"];
+          const isSatildi=item.durum==="Satıldı";
           return(
             <div key={item.id} onClick={()=>{setSelItem(item);setAnsicht("detail");}}
-              style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"border-color .15s"}}
+              style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"border-color .15s",opacity:isSatildi?0.5:1}}
               onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent}
               onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-                  <span style={{fontWeight:700,fontSize:15}}>{item.marke} {item.modell}</span>
+                  <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.muted,fontSize:12,minWidth:28}}>#{idx+1}</span>
+                  <span style={{fontWeight:700,fontSize:15,textDecoration:isSatildi?"line-through":"none"}}>{item.marke} {item.modell}</span>
                   <span style={{background:dc.bg,color:dc.farbe,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{dc.label}</span>
                 </div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
