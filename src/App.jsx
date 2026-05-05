@@ -792,8 +792,18 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
   const [zahlungsart,setZahlungsart]=useState("Bar");
+  const [posEditModus,setPosEditModus]=useState(false);
+  const [editPositionen,setEditPositionen]=useState(auftrag?.positionen||[]);
+  const [posKatalogOffen,setPosKatalogOffen]=useState(false);
+  const [posKatalogSuche,setPosKatalogSuche]=useState("");
   const printRef=useRef();
   const st=STATUS[auftrag?.status]||STATUS["Neu"];
+
+  function addPosEdit(name="",preis=0,menge=1){setEditPositionen(p=>[...p,{id:genId(),beschreibung:name,einzelpreis:preis,menge}]);}
+  function updatePosEdit(id,k,v){setEditPositionen(p=>p.map(x=>x.id===id?{...x,[k]:k==="einzelpreis"||k==="menge"?parseFloat(v)||0:v}:x));}
+  function delPosEdit(id){setEditPositionen(p=>p.filter(x=>x.id!==id));}
+  const editBrutto=editPositionen.reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0);
+  const posKatalog=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(posKatalogSuche.toLowerCase()))})).filter(g=>g.items.length>0);
   const statusFlow=["Neu","Genehmigt","In Arbeit","Fertig"];
   const istAbgerechnet=auftrag.status==="Abgerechnet";
 
@@ -890,6 +900,100 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         </div>
       )}
 
+      {/* POZİSYON DÜZENLEME BÖLÜMÜ */}
+      {!istAbgerechnet&&(
+        <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>🔧 LEİSTUNGSPOSİTİONEN</div>
+            <button onClick={()=>{setPosEditModus(p=>!p);setEditPositionen(auftrag.positionen||[]);}}
+              style={{...btnSecondary,fontSize:12,color:posEditModus?COLORS.accent:COLORS.muted,borderColor:posEditModus?COLORS.accent:COLORS.border,padding:"5px 12px"}}>
+              {posEditModus?"✕ İptal":"✏️ Düzenle"}
+            </button>
+          </div>
+
+          {!posEditModus?(
+            /* GÖRÜNTÜLEME MODU */
+            <div>
+              {(auftrag.positionen||[]).length===0&&<div style={{color:COLORS.muted,fontSize:13}}>Henüz pozisyon eklenmemiş.</div>}
+              {(auftrag.positionen||[]).map((p,i)=>(
+                <div key={p.id||i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${COLORS.border}`,fontSize:13,alignItems:"center"}}>
+                  <div style={{display:"flex",gap:8}}><span style={{color:COLORS.muted,minWidth:20}}>{i+1}.</span><span>{p.beschreibung}</span></div>
+                  <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                    <span style={{color:COLORS.muted,fontSize:12}}>{p.menge}×</span>
+                    <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent}}>{formatEuro(p.einzelpreis)}</span>
+                    <span style={{fontFamily:"'IBM Plex Mono'",fontWeight:600}}>{formatEuro((p.einzelpreis||0)*(p.menge||1))}</span>
+                  </div>
+                </div>
+              ))}
+              {(auftrag.positionen||[]).length>0&&(
+                <div style={{display:"flex",justifyContent:"flex-end",marginTop:8,gap:16,fontSize:13}}>
+                  <span style={{color:COLORS.muted}}>Gesamt:</span>
+                  <span style={{fontFamily:"'IBM Plex Mono'",fontWeight:700,color:COLORS.accent,fontSize:15}}>{formatEuro((auftrag.positionen||[]).reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0))}</span>
+                </div>
+              )}
+            </div>
+          ):(
+            /* DÜZENLEME MODU */
+            <div>
+              <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,overflow:"hidden",marginBottom:10}}>
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 80px 36px",padding:"6px 12px",background:COLORS.bg,fontSize:11,color:COLORS.muted,fontWeight:600,letterSpacing:.5}}>
+                  <span>BESCHREIBUNG</span><span>EINZELPREIS</span><span>MENGE</span><span></span>
+                </div>
+                {editPositionen.map((p,i)=>(
+                  <div key={p.id} style={{display:"grid",gridTemplateColumns:"2fr 1fr 80px 36px",gap:6,padding:"6px 12px",borderTop:`1px solid ${COLORS.border}`,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:COLORS.muted,fontSize:11,minWidth:16}}>{i+1}.</span>
+                      <input value={p.beschreibung} onChange={e=>updatePosEdit(p.id,"beschreibung",e.target.value)} style={{...inputStyle,padding:"5px 8px",fontSize:12}}/>
+                    </div>
+                    <input value={p.einzelpreis} type="number" min={0} step={0.5} onChange={e=>updatePosEdit(p.id,"einzelpreis",e.target.value)} style={{...inputStyle,padding:"5px 8px",fontSize:12}}/>
+                    <input value={p.menge} type="number" min={1} step={1} onChange={e=>updatePosEdit(p.id,"menge",e.target.value)} style={{...inputStyle,padding:"5px 8px",fontSize:12}}/>
+                    <button onClick={()=>delPosEdit(p.id)} style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:18,padding:0}}>×</button>
+                  </div>
+                ))}
+                {editPositionen.length===0&&<div style={{padding:12,color:COLORS.muted,fontSize:13,textAlign:"center"}}>Liste boş.</div>}
+              </div>
+
+              <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                <button onClick={()=>addPosEdit()} style={{...btnSecondary,fontSize:12,padding:"6px 12px"}}>+ Manuell</button>
+                <button onClick={()=>setPosKatalogOffen(p=>!p)} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:COLORS.accent,borderColor:COLORS.accent}}>📋 Aus Katalog</button>
+                <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{color:COLORS.muted,fontSize:12}}>Gesamt:</span>
+                  <span style={{fontFamily:"'IBM Plex Mono'",fontWeight:700,color:COLORS.accent}}>{formatEuro(editBrutto)}</span>
+                </div>
+              </div>
+
+              {posKatalogOffen&&(
+                <div style={{background:COLORS.surface,border:`1px solid ${COLORS.accent}`,borderRadius:10,padding:12,marginBottom:12,maxHeight:260,overflowY:"auto"}}>
+                  <input placeholder="Leistung suchen …" value={posKatalogSuche} onChange={e=>setPosKatalogSuche(e.target.value)} style={{...inputStyle,marginBottom:10,width:"100%",boxSizing:"border-box"}}/>
+                  {posKatalog.map(g=>(
+                    <div key={g.gruppe} style={{marginBottom:10}}>
+                      <div style={{color:COLORS.accent,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:4}}>{g.gruppe.toUpperCase()}</div>
+                      {g.items.map(item=>(
+                        <div key={item.name} onClick={()=>addPosEdit(item.name,item.preis,1)}
+                          style={{display:"flex",justifyContent:"space-between",padding:"5px 8px",borderRadius:6,cursor:"pointer",fontSize:12}}
+                          onMouseEnter={e=>{e.currentTarget.style.background=`${COLORS.accent}22`;}}
+                          onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
+                          <span>{item.name}</span>
+                          <span style={{color:COLORS.accent,fontFamily:"'IBM Plex Mono'"}}>{formatEuro(item.preis)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={async()=>{
+                if(onAktualisieren){
+                  await onAktualisieren({...auftrag,positionen:editPositionen,brutto:editBrutto,netto:calcNetto(editBrutto),mwst:calcMwst(editBrutto)});
+                }
+                setPosEditModus(false);
+                setPosKatalogOffen(false);
+              }} style={{...btnPrimary,width:"100%"}}>💾 Positionen speichern</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* DRUCKBARER BEREICH */}
       <div ref={printRef} style={{background:"white",color:"#111",padding:36,borderRadius:12,fontFamily:"sans-serif"}}>
         <div className="kopf" style={{display:"flex",justifyContent:"space-between",marginBottom:24,alignItems:"flex-start"}}>
@@ -942,6 +1046,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             </div>}
           </div>
         )}
+        {/* Pozisyon tablosu */}
         {auftrag.positionen&&auftrag.positionen.length>0&&(
           <>
             <table style={{width:"100%",borderCollapse:"collapse",marginBottom:12}}>
@@ -2122,12 +2227,12 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
                   <span style={{fontWeight:700,fontSize:15}}>{item.marke} {item.modell}</span>
                   <span style={{background:dc.bg,color:dc.farbe,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{dc.label}</span>
                 </div>
-                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+                  {item.typ&&<span style={{background:item.typ.toLowerCase().includes("damen")?"#f9a8d422":"#93c5fd22",color:item.typ.toLowerCase().includes("damen")?"#db2777":"#1d4ed8",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{item.typ}</span>}
                   {item.farbe&&<span style={{color:COLORS.muted,fontSize:12}}>🎨 {item.farbe}</span>}
-                  {item.rahmenGroesse&&<span style={{color:COLORS.muted,fontSize:12}}>📐 {item.rahmenGroesse}</span>}
+                  {item.rahmenGroesse&&<span style={{color:COLORS.muted,fontSize:12}}>📐 {item.rahmenGroesse} cm</span>}
                   {item.uretimYili&&<span style={{color:COLORS.muted,fontSize:12}}>📅 {item.uretimYili}</span>}
-                  {item.schaltung&&item.schaltung!=="Keine"&&<span style={{color:COLORS.muted,fontSize:12}}>⚙️ {item.schaltung}</span>}
-                  {item.bremsart&&<span style={{color:COLORS.muted,fontSize:12}}>🛑 {item.bremsart}</span>}
+                  {item.schaltung&&item.schaltung!=="Keine"&&<span style={{color:COLORS.muted,fontSize:12}}>⚙️ {item.gangAnzahl&&item.gangAnzahl+"-Gang"}</span>}
                 </div>
               </div>
               <div style={{textAlign:"right",marginLeft:16}}>
