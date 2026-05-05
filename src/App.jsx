@@ -2228,7 +2228,15 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
                   <span style={{background:dc.bg,color:dc.farbe,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{dc.label}</span>
                 </div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-                  {item.typ&&<span style={{background:item.typ.toLowerCase().includes("damen")?"#f9a8d422":"#93c5fd22",color:item.typ.toLowerCase().includes("damen")?"#db2777":"#1d4ed8",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{item.typ}</span>}
+                  {item.typ&&(()=>{
+                    const t=item.typ.toLowerCase();
+                    const isDamen=t.includes("damen");
+                    const isHerren=t.includes("herren");
+                    const isMixte=t.includes("mixte")||t.includes("unisex");
+                    const bg=isDamen?"#f9a8d422":isHerren?"#93c5fd22":isMixte?"#d8b4fe22":"#d1fae522";
+                    const col=isDamen?"#be185d":isHerren?"#1d4ed8":isMixte?"#7c3aed":"#065f46";
+                    return <span style={{background:bg,color:col,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{item.typ}</span>;
+                  })()}
                   {item.farbe&&<span style={{color:COLORS.muted,fontSize:12}}>🎨 {item.farbe}</span>}
                   {item.rahmenGroesse&&<span style={{color:COLORS.muted,fontSize:12}}>📐 {item.rahmenGroesse} cm</span>}
                   {item.uretimYili&&<span style={{color:COLORS.muted,fontSize:12}}>📅 {item.uretimYili}</span>}
@@ -2257,7 +2265,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
 // ─── ENVANTER FORM ────────────────────────────────────────────────────────────
 function EnvanterForm({item,onSave,onAbbruch}){
   const [form,setForm]=useState(item||{
-    marke:"",modell:"",farbe:"",rahmenGroesse:"M (51-55cm)",rahmennummer:"",
+    marke:"",modell:"",farbe:"",rahmenGroesse:"",rahmennummer:"",typ:"",
     uretimYili:"",schaltung:"Shimano",gangAnzahl:"",bremsart:"Scheibenbremse (hydraulisch)",
     durum:"Im Laden",preis:"",notizen:""
   });
@@ -2292,9 +2300,10 @@ function EnvanterForm({item,onSave,onAbbruch}){
             <select value={form.rahmenGroesse} onChange={e=>F("rahmenGroesse",e.target.value)} style={inputStyle}>
               {RAHMEN_GROESSEN.map(g=><option key={g}>{g}</option>)}
             </select></div>
-          <div><label style={labelStyle}>Typ</label>
-            <select value={form.typ||"Herrenrad"} onChange={e=>F("typ",e.target.value)} style={inputStyle}>
-              {["Herrenrad","Damenrad","Cityrad","Mountainbike","E-Bike","Rennrad","Kinderrad","Lastenrad","Sonstiges"].map(t=><option key={t}>{t}</option>)}
+          <div><label style={labelStyle}>Typ *</label>
+            <select value={form.typ||""} onChange={e=>F("typ",e.target.value)} style={{...inputStyle,border:!form.typ?`2px solid ${COLORS.orange}`:undefined}}>
+              <option value="">— Bitte wählen —</option>
+              {["Herrenrad","Damenrad","Mixte/Unisex","Cityrad","Mountainbike","E-Bike","Rennrad","Kinderrad","Lastenrad","Sonstiges"].map(t=><option key={t}>{t}</option>)}
             </select></div>
         </div>
       </div>
@@ -2347,6 +2356,7 @@ function EnvanterForm({item,onSave,onAbbruch}){
       <div style={{display:"flex",gap:12}}>
         <button disabled={saving} onClick={async()=>{
           if(!form.marke||!form.modell)return alert("Marke und Modell sind Pflichtfelder.");
+          if(!form.typ)return alert("Bitte Fahrradtyp (Herrenrad/Damenrad …) auswählen.");
           setSaving(true);
           await onSave({...form,durum:form.durum||"Mevcut"});
           setSaving(false);
