@@ -117,11 +117,11 @@ const LEISTUNGSKATALOG = [
   ]},
 ];
 const WA_TEMPLATES = [
-  {id:"annahme",label:"📥 Bisiklet alındı",text:(k,a)=>`Hallo ${k?.vorname||""}! Ihr Fahrrad (${a?.fahrradModell||""}) wurde bei uns aufgenommen. Auftrag #${a?.nummer||""}. Wir melden uns, sobald es fertig ist. – Drahtesel Plus`},
-  {id:"beginn",label:"🔧 İş başladı",text:(k,a)=>`Hallo ${k?.vorname||""}! Wir haben mit der Reparatur Ihres Fahrrads (${a?.fahrradModell||""}) begonnen. Voraussichtliche Fertigstellung: ${a?.voraussichtlichFertig||"in Kürze"}. – Drahtesel Plus`},
-  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${k?.vorname||""}! Ihr Fahrrad (${a?.fahrradModell||""}) ist fertig und kann abgeholt werden. Gesamtbetrag: ${formatEuro(a?.brutto||0)}. Wir freuen uns auf Ihren Besuch! – Drahtesel Plus`},
-  {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${k?.vorname||""}! Ihr Fahrrad (${a?.fahrradModell||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
-  {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${k?.vorname||""}! Unser Kostenvoranschlag für Ihr Fahrrad (${a?.fahrradModell||""}): ca. ${formatEuro(a?.brutto||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
+  {id:"annahme",label:"📥 Bisiklet alındı",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wurde bei uns aufgenommen. Auftrag #${(a&&a.nummer)||""}. Wir melden uns, sobald es fertig ist. – Drahtesel Plus`},
+  {id:"beginn",label:"🔧 İş başladı",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Wir haben mit der Reparatur Ihres Fahrrads (${(a&&a.fahrradModell)||""}) begonnen. Voraussichtliche Fertigstellung: ${(a&&a.voraussichtlichFertig)||"in Kürze"}. – Drahtesel Plus`},
+  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) ist fertig und kann abgeholt werden. Gesamtbetrag: ${formatEuro((a&&a.brutto)||0)}. Wir freuen uns auf Ihren Besuch! – Drahtesel Plus`},
+  {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
+  {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Unser Kostenvoranschlag für Ihr Fahrrad (${(a&&a.fahrradModell)||""}): ca. ${formatEuro((a&&a.brutto)||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
 ];
 
 function genId(){return Math.random().toString(36).slice(2,10);}
@@ -392,7 +392,7 @@ export default function DrahteselApp() {
               const k=selKunde;
               const neu=await auftragHinzufuegen(
                 {...a,kundeVorname:k.vorname,kundeNachname:k.nachname,kundeKdNr:k.kdNr},
-                k.id, selBisiklet?.id||a.bisikletId||null
+                k.id, (selBisiklet&&selBisiklet.id)||a.bisikletId||null
               );
               showToast("Arbeitsauftrag erstellt!");setSelAuftrag(neu);setScreen("auftrag-detail");
             }catch(e){showToast("Fehler: "+e.message,"err");}
@@ -522,7 +522,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile}){
       <div style={{padding:"0 20px 24px",borderBottom:`1px solid ${COLORS.border}`}}>
         <img src={LOGO_SRC} alt="" style={{width:44,height:44,objectFit:"contain",marginBottom:4}}/>
         <div style={{fontWeight:700,color:COLORS.accent,fontSize:15,letterSpacing:1}}>DRAHTESEL+</div>
-        <div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{benutzer?.name}</div>
+        <div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{(benutzer&&benutzer.name)}</div>
       </div>
       <nav style={{flex:1,padding:"16px 0"}}>
         {nav.map(n=>(
@@ -547,7 +547,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
   const fertige=auftraege.filter(a=>a.status==="Fertig");
   return(
     <div>
-      <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Guten Tag, {benutzer?.name?.split(" ")[0]}! 👋</h1>
+      <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Guten Tag, {(benutzer&&benutzer.name&&benutzer.name.split(" ")[0])}! 👋</h1>
       <p style={{color:COLORS.muted,marginBottom:24,fontSize:14}}>Werkstatt-Übersicht · Daten aus der Cloud ☁️</p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:16,marginBottom:24}}>
         {[
@@ -633,8 +633,8 @@ function AlleAuftraege({auftraege,kunden,onDetail}){
 function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch}){
   const [form,setForm]=useState({
     fahrradModell:bisiklet?`${bisiklet.marke||""} ${bisiklet.modell||""}`.trim():"",
-    bisikletId:bisiklet?.id||"",
-    fahrradFarbe:bisiklet?.farbe||"",fahrradNr:bisiklet?.rahmennr||"",
+    bisikletId:(bisiklet&&bisiklet.id)||"",
+    fahrradFarbe:(bisiklet&&bisiklet.farbe)||"",fahrradNr:(bisiklet&&bisiklet.rahmennr)||"",
     kundenbeschwerden:"",diagnose:"",hasarBeiBanahme:"",
     annahmeDatum:heute(),voraussichtlichFertig:"",
     positionen:[],notizen:""
@@ -788,16 +788,16 @@ function WaMessageEditor({template,kunde,auftrag}){
 }
 
 function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast}){
-  const [notizen,setNotizen]=useState(auftrag?.notizen||"");
+  const [notizen,setNotizen]=useState((auftrag&&auftrag.notizen)||"");
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
   const [zahlungsart,setZahlungsart]=useState("Bar");
   const [posEditModus,setPosEditModus]=useState(false);
-  const [editPositionen,setEditPositionen]=useState(auftrag?.positionen||[]);
+  const [editPositionen,setEditPositionen]=useState((auftrag&&auftrag.positionen)||[]);
   const [posKatalogOffen,setPosKatalogOffen]=useState(false);
   const [posKatalogSuche,setPosKatalogSuche]=useState("");
   const printRef=useRef();
-  const st=STATUS[auftrag?.status]||STATUS["Neu"];
+  const st=STATUS[(auftrag&&auftrag.status)]||STATUS["Neu"];
 
   function addPosEdit(name="",preis=0,menge=1){setEditPositionen(p=>[...p,{id:genId(),beschreibung:name,einzelpreis:preis,menge}]);}
   function updatePosEdit(id,k,v){setEditPositionen(p=>p.map(x=>x.id===id?{...x,[k]:k==="einzelpreis"||k==="menge"?parseFloat(v)||0:v}:x));}
@@ -872,14 +872,14 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       )}
 
       {/* WHATSAPP ŞABLONLARI */}
-      {!!(kunde?.whatsapp||kunde?.telefon||kunde?.email)&&(
+      {!!((kunde&&kunde.whatsapp)||(kunde&&kunde.telefon)||(kunde&&kunde.email))&&(
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",marginBottom:16}}>
           <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>💬 SCHNELLNACHRICHTEN</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:waTemplate?12:0}}>
             {WA_TEMPLATES.map(t=>(
-              <button key={t.id} onClick={()=>setWaTemplate(waTemplate?.id===t.id?null:t)}
-                style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${waTemplate?.id===t.id?COLORS.green:COLORS.border}`,
-                  background:waTemplate?.id===t.id?`${COLORS.green}22`:"transparent",color:waTemplate?.id===t.id?COLORS.green:COLORS.muted,
+              <button key={t.id} onClick={()=>setWaTemplate((waTemplate&&waTemplate.id)===t.id?null:t)}
+                style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${(waTemplate&&waTemplate.id)===t.id?COLORS.green:COLORS.border}`,
+                  background:(waTemplate&&waTemplate.id)===t.id?`${COLORS.green}22`:"transparent",color:(waTemplate&&waTemplate.id)===t.id?COLORS.green:COLORS.muted,
                   cursor:"pointer",fontSize:12}}>
                 {t.label}
               </button>
@@ -1278,7 +1278,7 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
             if(!form.marke&&!form.modell)return alert("Bitte Marke oder Modell eingeben.");
             setSaving(true);
             const saved=await onSave({...form,tempFotoId:tempId});
-            if(saved?.id)setSavedBisikletId(saved.id);
+            if((saved&&saved.id))setSavedBisikletId(saved.id);
             setSaving(false);
           }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>
             {saving?"Speichern...":"🚲 Fahrrad speichern"}
@@ -1936,7 +1936,7 @@ function KatalogScreen(){
           </div>
           {g.items.map(item=>(
             <div key={item.id} style={{borderTop:`1px solid ${COLORS.border}`}}>
-              {editItem?.itemId===item.id?(
+              {(editItem&&editItem.itemId)===item.id?(
                 <div style={{display:"grid",gridTemplateColumns:"2fr 1fr auto auto",gap:8,padding:"8px 14px",alignItems:"center"}}>
                   <input value={editItem.name} onChange={e=>setEditItem(p=>({...p,name:e.target.value}))} style={{...inputStyle,padding:"6px 10px",fontSize:13}}/>
                   <input type="number" value={editItem.preis} onChange={e=>setEditItem(p=>({...p,preis:e.target.value}))} style={{...inputStyle,padding:"6px 10px",fontSize:13}}/>
@@ -2038,11 +2038,11 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
       {benutzerListe.map(u=>(<div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}>
         <div>
           <span style={{fontWeight:500}}>{u.name}</span>
-          {u.id===benutzer?.id&&<span style={{color:COLORS.accent,fontSize:11,marginLeft:8}}>(aktif)</span>}
+          {u.id===(benutzer&&benutzer.id)&&<span style={{color:COLORS.accent,fontSize:11,marginLeft:8}}>(aktif)</span>}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={{background:u.rolle==="admin"?`${COLORS.accent}22`:`${COLORS.blue}22`,color:u.rolle==="admin"?COLORS.accent:COLORS.blue,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{u.rolle}</span>
-          {u.id!==benutzer?.id&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`)){
+          {u.id!==(benutzer&&benutzer.id)&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`)){
               dbDelete("benutzer",u.id).catch(()=>{});
               setBenutzerListe(p=>{
                 const yeni=p.filter(x=>x.id!==u.id);
@@ -2152,7 +2152,7 @@ const DURUM_CONFIG = {
 };
 const SCHALTUNG_OPTIONEN = ["Keine","Shimano","SRAM","Campagnolo","Sturmey-Archer","Andere"];
 const BREMS_OPTIONEN = ["Felgenbremse","Scheibenbremse (mechanisch)","Scheibenbremse (hydraulisch)","Rücktrittbremse","V-Brake","Cantilever","Andere"];
-const RAHMEN_GROESSEN = ['44', '45', '46', '47', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63', '64', '65', '66', '67', '68', '69', '70', 'Universalgröße'];
+const RAHMEN_GROESSEN = ['49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63', '64', '65', '66', 'Universalgröße'];
 
 function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
   const [ansicht,setAnsicht]=useState("liste"); // liste | neu | detail
@@ -2165,10 +2165,40 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
     const sucheOk=!suche||`${e.marke||""} ${e.modell||""} ${e.farbe||""} ${e.rahmennummer||""}`.toLowerCase().includes(suche.toLowerCase());
     return durumOk&&sucheOk;
   }).sort((a,b)=>{
-    // Satıldı en sona
-    if(a.durum==="Satıldı"&&b.durum!=="Satıldı") return 1;
-    if(a.durum!=="Satıldı"&&b.durum==="Satıldı") return -1;
-    return 0;
+    // 1. Satıldı en sona
+    const aSatildi=a.durum==="Satıldı";
+    const bSatildi=b.durum==="Satıldı";
+    if(aSatildi&&!bSatildi) return 1;
+    if(!aSatildi&&bSatildi) return -1;
+
+    // 2. Marka
+    const markeComp=(a.marke||"").localeCompare(b.marke||"","de");
+    if(markeComp!==0) return markeComp;
+
+    // 3. Model
+    const modellComp=(a.modell||"").localeCompare(b.modell||"","de");
+    if(modellComp!==0) return modellComp;
+
+    // 4. Herren önce, Damen sonra
+    const typOrder=t=>{
+      if(!t) return 9;
+      const tl=t.toLowerCase();
+      if(tl.includes("herren")) return 1;
+      if(tl.includes("damen")) return 2;
+      if(tl.includes("mixte")||tl.includes("unisex")) return 3;
+      return 4;
+    };
+    const typComp=typOrder(a.typ)-typOrder(b.typ);
+    if(typComp!==0) return typComp;
+
+    // 5. Renk
+    const farbeComp=(a.farbe||"").localeCompare(b.farbe||"","de");
+    if(farbeComp!==0) return farbeComp;
+
+    // 6. Rahmengröße (sayısal)
+    const aG=parseInt(a.rahmenGroesse)||0;
+    const bG=parseInt(b.rahmenGroesse)||0;
+    return aG-bG;
   });
 
   if(ansicht==="neu") return <EnvanterForm
