@@ -255,6 +255,10 @@ export default function DrahteselApp() {
     await dbInsert("bisikletler",{id,kunde_id:kundeId,erstellt,data:b});
     setBisikletler(p=>[neu,...p]); return neu;
   }
+  async function bisikletLoeschen(id) {
+    await dbDelete("bisikletler",id);
+    setBisikletler(p=>p.filter(x=>x.id!==id));
+  }
   async function bisikletAktualisieren(b) {
     const {id,kundeId,erstellt,...data}=b;
     await dbUpdate("bisikletler",id,{data});
@@ -364,6 +368,7 @@ export default function DrahteselApp() {
           onLoeschen={async(id)=>{try{await kundeLoeschen(id);setScreen("kunden");showToast("Gelöscht.");}catch(e){showToast("Fehler","err");}}}
           onNeuBisiklet={()=>setScreen("neu-bisiklet")}
           onBisikletDetail={(b)=>{setSelBisiklet(b);setScreen("bisiklet-detail");}}
+          onBisikletLoeschen={async(id)=>{try{await bisikletLoeschen(id);showToast("Fahrrad gelöscht.");}catch(e){showToast("Fehler","err");}}}
           onNeuAuftrag={(b)=>{if(b)setSelBisiklet(b);setScreen("neu-auftrag");}}
           onAuftrag={(a)=>{setSelAuftrag(a);setScreen("auftrag-detail");}}
           onRechnung={(r)=>{setSelRechnung(r);setScreen("rechnung-detail");}}
@@ -1408,7 +1413,7 @@ function KundenListe({kunden,auftraege,onWaehle,onNeu}){
 }
 
 // ─── KUNDE DETAIL ─────────────────────────────────────────────────────────────
-function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoeschen,onNeuBisiklet,onBisikletDetail,onNeuAuftrag,onAuftrag,onRechnung}){
+function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoeschen,onNeuBisiklet,onBisikletDetail,onBisikletLoeschen,onNeuAuftrag,onAuftrag,onRechnung}){
   const [bearbeiten,setBearbeiten]=useState(false);
   const [form,setForm]=useState({...kunde});
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -1477,6 +1482,8 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={e=>{e.stopPropagation();onNeuAuftrag(b);}} style={{...btnSecondary,fontSize:12,padding:"4px 10px",color:COLORS.teal,borderColor:COLORS.teal}}>+ Auftrag</button>
             <span style={{color:COLORS.muted,fontSize:11}}>{auftraege.filter(a=>a.bisikletId===b.id).length} Auftr.</span>
+            <button onClick={e=>{e.stopPropagation();if(window.confirm(`"${b.marke||""} ${b.modell||""}" silinsin mi?`))onBisikletLoeschen(b.id);}}
+              style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:16,padding:"0 4px"}}>🗑️</button>
           </div>
         </div>
       ))}
