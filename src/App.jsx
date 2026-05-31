@@ -357,7 +357,7 @@ export default function DrahteselApp() {
         {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
           onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setScreen("auftrag-detail");}}/>}
-        {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege}
+        {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege} bisikletler={bisikletler}
           onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}/>}
         {screen==="kunde-detail"&&selKunde&&<KundeDetail
           kunde={selKunde}
@@ -1379,7 +1379,7 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
   );
 }
 
-function KundenListe({kunden,auftraege,onWaehle,onNeu}){
+function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
   const [suche,setSuche]=useState("");
 
   const gefiltert=[...kunden]
@@ -1420,11 +1420,14 @@ function KundenListe({kunden,auftraege,onWaehle,onNeu}){
                 {initials}
               </div>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:14,marginBottom:2}}>{k.nachname}, {k.vorname}</div>
-                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>{k.nachname}, {k.vorname}</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
                   {k.telefon&&<span style={{color:COLORS.muted,fontSize:12}}>📞 {k.telefon}</span>}
-                  {k.email&&<span style={{color:COLORS.muted,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>✉ {k.email}</span>}
-                  {!k.telefon&&!k.email&&<span style={{color:COLORS.muted,fontSize:12}}>{k.strasse} {k.hausnr}, {k.plz} {k.ort}</span>}
+                  {(bisikletler||[]).filter(b=>b.kundeId===k.id).map(b=>(
+                    <span key={b.id} style={{background:`${COLORS.teal}22`,color:COLORS.teal,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:500}}>
+                      🚲 {b.marke} {b.modell}{b.rahmenGroesse?" "+b.rahmenGroesse:""}
+                    </span>
+                  ))}
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
@@ -1858,14 +1861,15 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
   return(<div>
     <h2 style={{marginBottom:20}}>Alle Auftragbescheinigungen</h2>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {[...rechnungen].reverse().map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
+      {[...rechnungen].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
         <div key={r.id} onClick={()=>onDetail(r,k)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
-          <div style={{display:"flex",gap:20,alignItems:"center"}}>
-            <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:13,minWidth:70}}>Nr. {r.nummer}</span>
-            <span style={{fontSize:13}}>{k.vorname} {k.nachname}</span>
+          <div style={{display:"flex",gap:12,alignItems:"center",flex:1,minWidth:0}}>
+            <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:13,minWidth:70,flexShrink:0}}>Nr. {r.nummer}</span>
+            <span style={{fontSize:13,fontWeight:500}}>{k.nachname}, {k.vorname}</span>
+            {r.fahrradModell&&<span style={{color:COLORS.muted,fontSize:12}}>· {r.fahrradModell}</span>}
           </div>
-          <div style={{display:"flex",gap:20,alignItems:"center"}}>
+          <div style={{display:"flex",gap:12,alignItems:"center",flex:1,minWidth:0}}>
             <span style={{color:COLORS.green,fontFamily:"'IBM Plex Mono'",fontSize:13}}>{formatEuro(r.brutto||0)}</span>
             <span style={{color:COLORS.muted,fontSize:12}}>{r.erstellt}</span>
           </div>
