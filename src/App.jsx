@@ -590,7 +590,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
 }
 function AlleAuftraege({auftraege,kunden,onDetail}){
   const [filter,setFilter]=useState("alle");
-  const gefiltert=[...auftraege].reverse().filter(a=>filter==="alle"||a.status===filter);
+  const gefiltert=[...auftraege].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).filter(a=>filter==="alle"||a.status===filter);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -1381,38 +1381,73 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
 
 function KundenListe({kunden,auftraege,onWaehle,onNeu}){
   const [suche,setSuche]=useState("");
-  const gefiltert=kunden.filter(k=>`${k.vorname} ${k.nachname} ${k.email} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()));
+
+  const gefiltert=[...kunden]
+    .sort((a,b)=>(parseInt(b.kdNr)||0)-(parseInt(a.kdNr)||0))
+    .filter(k=>`${k.vorname} ${k.nachname} ${k.email||""} ${k.telefon||""} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()));
+
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2 style={{fontSize:20,fontWeight:700}}>Kunden & Fahrräder</h2>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700}}>Kunden & Fahrräder</h2>
+          <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{kunden.length} Kunden gesamt</div>
+        </div>
         <button onClick={onNeu} style={btnPrimary}>+ Neuer Kunde</button>
       </div>
-      <input placeholder="Suchen nach Name, E-Mail, Kundennr. …" value={suche} onChange={e=>setSuche(e.target.value)} style={{...inputStyle,marginBottom:16,width:"100%",boxSizing:"border-box"}}/>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {gefiltert.map(k=>{
+
+      <div style={{position:"relative",marginBottom:14}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <input placeholder="Name, E-Mail, Telefon oder Kundennr. …" value={suche} onChange={e=>setSuche(e.target.value)}
+          style={{...inputStyle,paddingLeft:42,boxSizing:"border-box"}}/>
+        {suche&&<button onClick={()=>setSuche("")}
+          style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
+      </div>
+
+      {suche&&<div style={{color:COLORS.muted,fontSize:12,marginBottom:10}}>{gefiltert.length} Ergebnis{gefiltert.length!==1?"se":""} gefunden</div>}
+
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {gefiltert.map((k)=>{
           const kdA=auftraege.filter(a=>a.kundeId===k.id&&a.status!=="Abgerechnet");
+          const kdF=auftraege.filter(a=>a.kundeId===k.id&&a.status==="Fertig");
+          const initials=((k.vorname||"?")[0]+(k.nachname||" ")[0]).toUpperCase();
           return(
-            <div key={k.id} onClick={()=>onWaehle(k)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"border-color .15s"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
-              <div>
-                <div style={{fontWeight:600}}>{k.vorname} {k.nachname}</div>
-                <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{k.strasse} {k.hausnr}, {k.plz} {k.ort}</div>
+            <div key={k.id} onClick={()=>onWaehle(k)}
+              style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=COLORS.accent;e.currentTarget.style.background="#ddeef9";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=COLORS.border;e.currentTarget.style.background=COLORS.card;}}>
+              <div style={{width:40,height:40,borderRadius:"50%",background:COLORS.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:15,color:"#fff",flexShrink:0}}>
+                {initials}
               </div>
-              <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                {kdA.length>0&&<span style={{background:`${COLORS.orange}22`,color:COLORS.orange,borderRadius:12,padding:"2px 8px",fontSize:11,fontWeight:600}}>{kdA.length} offen</span>}
-                <div style={{color:COLORS.accent,fontSize:12,fontFamily:"'IBM Plex Mono'"}}>Kd.-Nr. {k.kdNr}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:14,marginBottom:2}}>{k.nachname}, {k.vorname}</div>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                  {k.telefon&&<span style={{color:COLORS.muted,fontSize:12}}>📞 {k.telefon}</span>}
+                  {k.email&&<span style={{color:COLORS.muted,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>✉ {k.email}</span>}
+                  {!k.telefon&&!k.email&&<span style={{color:COLORS.muted,fontSize:12}}>{k.strasse} {k.hausnr}, {k.plz} {k.ort}</span>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+                <span style={{color:COLORS.accent,fontSize:11,fontFamily:"'IBM Plex Mono'",fontWeight:600}}>#{k.kdNr}</span>
+                <div style={{display:"flex",gap:4}}>
+                  {kdF.length>0&&<span style={{background:`${COLORS.green}22`,color:COLORS.green,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:600}}>✓ Fertig</span>}
+                  {kdA.length>0&&<span style={{background:`${COLORS.orange}22`,color:COLORS.orange,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:600}}>{kdA.length} offen</span>}
+                </div>
               </div>
             </div>
           );
         })}
-        {!gefiltert.length&&<div style={{color:COLORS.muted,textAlign:"center",padding:32}}>Keine Kunden gefunden.</div>}
+        {!gefiltert.length&&(
+          <div style={{textAlign:"center",padding:40,color:COLORS.muted}}>
+            <div style={{fontSize:36,marginBottom:10}}>👥</div>
+            <div style={{fontSize:14}}>{suche?"Keine Kunden gefunden.":"Noch keine Kunden angelegt."}</div>
+            {!suche&&<button onClick={onNeu} style={{...btnPrimary,marginTop:16}}>+ Ersten Kunden anlegen</button>}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-// ─── KUNDE DETAIL ─────────────────────────────────────────────────────────────
 function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoeschen,onNeuBisiklet,onBisikletDetail,onBisikletLoeschen,onNeuAuftrag,onAuftrag,onRechnung}){
   const [bearbeiten,setBearbeiten]=useState(false);
   const [form,setForm]=useState({...kunde});
