@@ -372,6 +372,7 @@ export default function DrahteselApp() {
           onNeuAuftrag={(b)=>{if(b)setSelBisiklet(b);setScreen("neu-auftrag");}}
           onAuftrag={(a)=>{setSelAuftrag(a);setScreen("auftrag-detail");}}
           onRechnung={(r)=>{setSelRechnung(r);setScreen("rechnung-detail");}}
+          onAbbruch={()=>setScreen("kunden")}
         />}
         {screen==="neu-kunde"&&<NeuKundeForm
           onSave={async(k)=>{try{await kundeHinzufuegen(k);showToast("Kunde angelegt!");setScreen("kunden");}catch(e){showToast("Fehler: "+e.message,"err");}}}
