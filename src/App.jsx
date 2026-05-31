@@ -1472,7 +1472,6 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
           <div style={{color:COLORS.muted,fontSize:13}}>Kunden-Nr.: {kunde.kdNr} · Erstellt: {kunde.erstellt}</div>
         </div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>window.history.back()} style={btnSecondary}>← Zurück</button>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
           <button onClick={()=>setBearbeiten(true)} style={btnSecondary}>Bearbeiten</button>
           <button onClick={()=>{if(confirm("Kunde löschen?"))onLoeschen(kunde.id);}} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>Löschen</button>
