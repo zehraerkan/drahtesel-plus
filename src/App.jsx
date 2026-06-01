@@ -337,8 +337,15 @@ export default function DrahteselApp() {
   // ── CRUD fonksiyonları ──────────────────────────────────────────────────────
   async function kundeHinzufuegen(k) {
     const id=genId(); const erstellt=heute();
-    const maxNr=kunden.reduce((m,k)=>Math.max(m,parseInt(k.kdNr)||0),0);
-    const kdNr=String(Math.max(maxNr+1,1)).padStart(4,"0");
+    // Supabase'den mevcut en yüksek kdNr'yi al (silinen müşteriler dahil)
+    let maxNr=0;
+    try{
+      const rows=await dbGet("kunden");
+      maxNr=rows.reduce((m,r)=>Math.max(m,parseInt((r.data&&r.data.kdNr)||r.kdNr||0)||0),0);
+    }catch{
+      maxNr=kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0);
+    }
+    const kdNr=String(maxNr+1).padStart(4,"0");
     const neu={...k,id,kdNr,erstellt};
     await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
     setKunden(p=>[neu,...p]); return neu;
@@ -1966,11 +1973,13 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
     <h2 style={{marginBottom:20}}>Alle Auftragbescheinigungen</h2>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {[...rechnungen].sort((a,b)=>{
+        // Önce Kunden Nr. ile uyumlu (büyükten küçüğe)
         const kA=kunden.find(x=>x.id===a.kundeId)||{};
         const kB=kunden.find(x=>x.id===b.kundeId)||{};
-        const kdComp=(parseInt(kA.kdNr)||0)-(parseInt(kB.kdNr)||0);
+        const kdComp=(parseInt(kB.kdNr)||0)-(parseInt(kA.kdNr)||0);
         if(kdComp!==0) return kdComp;
-        return (parseInt(a.nummer)||0)-(parseInt(b.nummer)||0);
+        // Aynı müşteride Rechnung Nr. büyükten küçüğe
+        return (parseInt(b.nummer)||0)-(parseInt(a.nummer)||0);
       }).map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
         <div key={r.id} onClick={()=>onDetail(r,k)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
