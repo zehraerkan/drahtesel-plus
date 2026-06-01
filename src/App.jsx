@@ -274,6 +274,7 @@ export default function DrahteselApp() {
   const [selBisiklet,setSelBisiklet]=useState(null);
   const [selAuftrag,setSelAuftrag]=useState(null);
   const [selRechnung,setSelRechnung]=useState(null);
+  const [prevScreen,setPrevScreen]=useState("auftraege");
   const [toast,setToast]=useState(null);
   const [sidebarOffen,setSidebarOffen]=useState(!isMobile);
   const [laden,setLaden]=useState(false);
@@ -337,7 +338,7 @@ export default function DrahteselApp() {
   async function kundeHinzufuegen(k) {
     const id=genId(); const erstellt=heute();
     const maxNr=kunden.reduce((m,k)=>Math.max(m,parseInt(k.kdNr)||0),0);
-    const kdNr=String(maxNr+1).padStart(4,"0");
+    const kdNr=String(Math.max(maxNr+1,1)).padStart(4,"0");
     const neu={...k,id,kdNr,erstellt};
     await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
     setKunden(p=>[neu,...p]); return neu;
@@ -457,7 +458,7 @@ export default function DrahteselApp() {
       <main style={{flex:1,overflow:"auto",padding:isMobile?"60px 16px 24px":"60px 32px 24px"}}>
         {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
-          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setScreen("auftrag-detail");}}/>}
+          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setPrevScreen("auftraege");setScreen("auftrag-detail");}}/>}
         {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege} bisikletler={bisikletler}
           onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}/>}
         {screen==="kunde-detail"&&selKunde&&<KundeDetail
@@ -471,7 +472,7 @@ export default function DrahteselApp() {
           onBisikletDetail={(b)=>{setSelBisiklet(b);setScreen("bisiklet-detail");}}
           onBisikletLoeschen={async(id)=>{try{await bisikletLoeschen(id);showToast("Fahrrad gelöscht.");}catch(e){showToast("Fehler","err");}}}
           onNeuAuftrag={(b)=>{if(b)setSelBisiklet(b);setScreen("neu-auftrag");}}
-          onAuftrag={(a)=>{setSelAuftrag(a);setScreen("auftrag-detail");}}
+          onAuftrag={(a)=>{setSelAuftrag(a);setPrevScreen("kunde-detail");setScreen("auftrag-detail");}}
           onRechnung={(r)=>{setSelRechnung(r);setScreen("rechnung-detail");}}
           onAbbruch={()=>setScreen("kunden")}
         />}
@@ -486,7 +487,7 @@ export default function DrahteselApp() {
           bisiklet={selBisiklet}
           auftraege={auftraege.filter(a=>a.bisikletId===selBisiklet.id)}
           onNeuAuftrag={()=>setScreen("neu-auftrag")}
-          onAuftrag={(a)=>{setSelAuftrag(a);setScreen("auftrag-detail");}}
+          onAuftrag={(a)=>{setSelAuftrag(a);setPrevScreen("kunde-detail");setScreen("auftrag-detail");}}
           onBearbeiten={async(b)=>{try{await bisikletAktualisieren(b);setSelBisiklet(b);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="neu-auftrag"&&selKunde&&<NeuAuftragForm
@@ -525,7 +526,7 @@ export default function DrahteselApp() {
               setSelRechnung(neu);showToast("Rechnung erstellt!");setScreen("rechnung-detail");
             }catch(e){showToast("Fehler: "+e.message,"err");}
           }}
-          onAbbruch={()=>setScreen("kunde-detail")}
+          onAbbruch={()=>setScreen(prevScreen||"auftraege")}
           showToast={showToast}/>}
         {screen==="rechnungen"&&<AlleRechnungen rechnungen={rechnungen} kunden={kunden}
           onDetail={(r,k)=>{setSelRechnung(r);setSelKunde(k);setScreen("rechnung-detail");}}/>}
@@ -1964,7 +1965,13 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
   return(<div>
     <h2 style={{marginBottom:20}}>Alle Auftragbescheinigungen</h2>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {[...rechnungen].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
+      {[...rechnungen].sort((a,b)=>{
+        const kA=kunden.find(x=>x.id===a.kundeId)||{};
+        const kB=kunden.find(x=>x.id===b.kundeId)||{};
+        const kdComp=(parseInt(kA.kdNr)||0)-(parseInt(kB.kdNr)||0);
+        if(kdComp!==0) return kdComp;
+        return (parseInt(a.nummer)||0)-(parseInt(b.nummer)||0);
+      }).map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
         <div key={r.id} onClick={()=>onDetail(r,k)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
           <div style={{display:"flex",gap:12,alignItems:"center",flex:1,minWidth:0}}>
