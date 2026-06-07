@@ -612,9 +612,20 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
           <input placeholder="Land" value={form.land} onChange={e=>F("land",e.target.value)} style={inputStyle}/>
         </div>
         <textarea placeholder="Anmerkungen" value={form.notiz} onChange={e=>F("notiz",e.target.value)} style={{...inputStyle,height:60,resize:"vertical",marginBottom:16}}/>
+        <div style={{background:"#f0f6fc",border:"1px solid #c5d9ed",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+          <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer",fontSize:13,color:"#0f1f3d"}}>
+            <input type="checkbox" id="dsgvo-check" style={{marginTop:2,flexShrink:0,width:16,height:16}}/>
+            <span>Ich habe die <strong>Datenschutzhinweise</strong> gelesen und stimme der Verarbeitung meiner personenbezogenen Daten zur Auftragsabwicklung gemäß Art. 6 Abs. 1 lit. b DSGVO zu. Meine Daten werden ausschließlich für die Abwicklung des Werkstattauftrags verwendet und nicht an Dritte weitergegeben. <span style={{color:"#dc2626"}}>*</span></span>
+          </label>
+        </div>
         <div style={{display:"flex",gap:12}}>
           <button onClick={onBack} style={btnSecondary}>Zurück</button>
-          <button disabled={saving} onClick={async()=>{if(!form.vorname||!form.nachname||!form.email)return alert("Pflichtfelder ausfüllen.");setSaving(true);await onSave(form);setSaving(false);}} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Speichern...":"Absenden"}</button>
+          <button disabled={saving} onClick={async()=>{
+            if(!form.vorname||!form.nachname||!form.email)return alert("Pflichtfelder ausfüllen.");
+            const chk=document.getElementById("dsgvo-check");
+            if(!chk||!chk.checked)return alert("Bitte stimmen Sie der Datenschutzerklärung zu.");
+            setSaving(true);await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});setSaving(false);
+          }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Speichern...":"Absenden"}</button>
         </div>
       </div>
     </div>
@@ -663,7 +674,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
   return(
     <div>
       <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Guten Tag, {(benutzer&&benutzer.name&&benutzer.name.split(" ")[0])}! 👋</h1>
-      <p style={{color:COLORS.muted,marginBottom:24,fontSize:14}}>Werkstatt-Übersicht · Daten aus der Cloud ☁️</p>
+      <p style={{color:COLORS.muted,marginBottom:24,fontSize:14}}>Werkstatt-Übersicht · Daten aus der Cloud ☁️ · <span style={{color:"#92400e",fontSize:12}}>🔒 DSGVO-konform · EU-Server Frankfurt</span></p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:16,marginBottom:24}}>
         {[
           {label:"Aktive Aufträge",wert:offene.length,icon:"🔧",farbe:COLORS.orange,click:()=>setScreen("auftraege")},
@@ -1194,6 +1205,9 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           <div><strong>{getFirma().name}</strong> · {getFirma().strasse} · {getFirma().plz} {getFirma().ort}<br/>USt-IdNr: {getFirma().ustId} · Steuernummer: {getFirma().steuerNr}<br/>Geschäftsführer: {getFirma().geschaeftsfuehrer}</div>
           <div style={{textAlign:"right"}}>{getFirma().bank}<br/>IBAN: {getFirma().iban}<br/>BIC: {getFirma().bic}</div>
         </div>
+        <div style={{marginTop:10,padding:"8px 12px",background:"#f9f9f9",borderRadius:4,fontSize:10,color:"#999",borderTop:"1px solid #eee"}}>
+          Datenschutzhinweis: Ihre personenbezogenen Daten werden gemäß Art. 6 Abs. 1 lit. b DSGVO zur Auftragsabwicklung verarbeitet und 10 Jahre aufbewahrt (§ 257 HGB). Auskunft, Berichtigung und Löschung: {getFirma().email}
+        </div>
       </div>
 
       {/* ZAHLUNGSART MODAL */}
@@ -1599,6 +1613,54 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
           <InfoZeile label="Land" wert={kunde.land}/>
         </InfoKarte>
       </div>
+      {/* DSGVO Bölümü */}
+      <div style={{background:"#fff8e1",border:"1px solid #f59e0b44",borderRadius:12,padding:"14px 18px",marginBottom:8}}>
+        <div style={{fontWeight:600,fontSize:13,color:"#92400e",letterSpacing:.5,marginBottom:10}}>🔒 DATENSCHUTZ (DSGVO)</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>{
+            const k=kunde;
+            const text=[
+              "AUSKUNFT NACH ART. 15 DSGVO",
+              "━━━━━━━━━━━━━━━━━━━━━━━━",
+              `Name: ${k.vorname} ${k.nachname}`,
+              `Kunden-Nr.: ${k.kdNr}`,
+              `E-Mail: ${k.email||"—"}`,
+              `Telefon: ${k.telefon||"—"}`,
+              `WhatsApp: ${k.whatsapp||"—"}`,
+              `Adresse: ${k.strasse||""} ${k.hausnr||""}, ${k.plz||""} ${k.ort||""}`,
+              `Erfasst am: ${k.erstellt||"—"}`,
+              k.dsgvoZustimmung?`DSGVO-Einwilligung: Ja (${k.dsgvoDatum?new Date(k.dsgvoDatum).toLocaleDateString("de-DE"):"—"})`:"DSGVO-Einwilligung: Nicht digital erfasst",
+              "",
+              "Zweck der Verarbeitung: Auftragsabwicklung Fahrradwerkstatt",
+              "Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung)",
+              "Speicherdauer: 10 Jahre (§ 257 HGB, § 147 AO)",
+              "Verantwortlicher: HAS 17 GmbH, Fehrbellinerstr. 17, 10119 Berlin",
+            ].join("
+");
+            const blob=new Blob([text],{type:"text/plain;charset=utf-8"});
+            const url=URL.createObjectURL(blob);
+            const a=document.createElement("a");
+            a.href=url;a.download=`Datenauszug_${k.nachname}_${k.kdNr}.txt`;
+            a.click();URL.revokeObjectURL(url);
+          }} style={{...btnSecondary,fontSize:12,color:"#92400e",borderColor:"#f59e0b"}}>
+            📄 Datenauskunft (Art. 15)
+          </button>
+          <button onClick={()=>{
+            if(confirm(`Alle Daten von "${kunde.vorname} ${kunde.nachname}" unwiderruflich löschen?
+
+Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB beachten!`)){
+              onLoeschen(kunde.id);
+            }
+          }} style={{...btnSecondary,fontSize:12,color:COLORS.red,borderColor:COLORS.red}}>
+            🗑️ Löschantrag (Art. 17)
+          </button>
+        </div>
+        <div style={{color:"#92400e",fontSize:11,marginTop:8}}>
+          Speicherdauer: 10 Jahre (Rechnungen) · Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO
+          {kunde.dsgvoZustimmung&&<span style={{marginLeft:8,color:"#16a34a",fontWeight:600}}>✓ Einwilligung erteilt</span>}
+        </div>
+      </div>
+
       {/* Schnellnachrichten */}
       <InfoKarte titel="📣 Benachrichtigungen">
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
@@ -2291,8 +2353,69 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
     </div>
 
     <div style={{height:8}}/>
+
+    {/* DSGVO / Datenschutz */}
+    <div style={{background:"#fff8e1",border:"1px solid #f59e0b44",borderRadius:12,padding:"18px 20px",marginBottom:8}}>
+      <div style={{fontWeight:600,fontSize:13,color:"#92400e",letterSpacing:.5,marginBottom:14}}>🔒 DATENSCHUTZ & DSGVO</div>
+
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:6}}>Aufbewahrungsfristen</div>
+        <div style={{fontSize:12,color:COLORS.muted,lineHeight:1.7}}>
+          📋 <strong>Rechnungen & Geschäftsdaten:</strong> 10 Jahre (§ 257 HGB, § 147 AO)<br/>
+          👥 <strong>Kundendaten:</strong> Solange Geschäftsbeziehung besteht + 3 Jahre<br/>
+          🔧 <strong>Werkstattaufträge:</strong> 10 Jahre (Gewährleistung + steuerlich)<br/>
+          📧 <strong>Kommunikationsdaten:</strong> 3 Jahre nach letztem Kontakt
+        </div>
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:6}}>Rechtsgrundlagen</div>
+        <div style={{fontSize:12,color:COLORS.muted,lineHeight:1.7}}>
+          ⚖️ <strong>Vertragserfüllung:</strong> Art. 6 Abs. 1 lit. b DSGVO<br/>
+          📊 <strong>Berechtigtes Interesse:</strong> Art. 6 Abs. 1 lit. f DSGVO<br/>
+          🏛️ <strong>Gesetzliche Pflicht:</strong> Art. 6 Abs. 1 lit. c DSGVO (Buchführung)
+        </div>
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:6}}>Datenverarbeitung</div>
+        <div style={{fontSize:12,color:COLORS.muted,lineHeight:1.7}}>
+          🌍 <strong>Speicherort:</strong> Supabase (EU-Server Frankfurt) ✅<br/>
+          🔐 <strong>Verschlüsselung:</strong> TLS in Transit, AES-256 at Rest<br/>
+          🚫 <strong>Weitergabe:</strong> Keine Weitergabe an Dritte<br/>
+          👤 <strong>Datenschutzbeauftragter:</strong> Nicht erforderlich (&lt;10 MA)
+        </div>
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:6}}>Betroffenenrechte (DSGVO Art. 15-22)</div>
+        <div style={{fontSize:12,color:COLORS.muted,lineHeight:1.7}}>
+          📄 <strong>Auskunft (Art. 15):</strong> Im Kundenprofil → "Datenauskunft" Button<br/>
+          ✏️ <strong>Berichtigung (Art. 16):</strong> Im Kundenprofil → "Bearbeiten"<br/>
+          🗑️ <strong>Löschung (Art. 17):</strong> Im Kundenprofil → "Löschantrag" Button<br/>
+          📦 <strong>Datenportabilität (Art. 20):</strong> Im Kundenprofil → TXT-Download
+        </div>
+      </div>
+
+      <div style={{background:"#fef3c7",borderRadius:8,padding:"10px 12px",fontSize:12,color:"#78350f"}}>
+        ⚠️ <strong>Wichtig:</strong> Bei Löschanfragen beachten, dass steuerrechtlich relevante Rechnungen 10 Jahre aufbewahrt werden müssen (§ 257 HGB). Diese können ggf. anonymisiert statt gelöscht werden.
+      </div>
+
+      <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+        <a href="https://www.datenschutz-berlin.de" target="_blank" rel="noopener noreferrer"
+          style={{...btnSecondary,textDecoration:"none",fontSize:12,color:"#92400e",borderColor:"#f59e0b"}}>
+          🏛️ Berliner Datenschutzbeauftragter
+        </a>
+        <a href="https://dsgvo-vorlagen.de" target="_blank" rel="noopener noreferrer"
+          style={{...btnSecondary,textDecoration:"none",fontSize:12,color:"#92400e",borderColor:"#f59e0b"}}>
+          📋 Verarbeitungsverzeichnis erstellen
+        </a>
+      </div>
+    </div>
+
+    <div style={{height:8}}/>
     <InfoKarte titel="🗄️ Datenverwaltung">
-      <p style={{color:COLORS.muted,fontSize:13}}>Veriler Supabase Cloud'da saklanıyor ☁️</p>
+      <p style={{color:COLORS.muted,fontSize:13}}>Veriler Supabase Cloud'da saklanıyor (EU-Server Frankfurt) ☁️ ✅</p>
     </InfoKarte>
   </div>);
 }
