@@ -612,10 +612,14 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
           <input placeholder="Land" value={form.land} onChange={e=>F("land",e.target.value)} style={inputStyle}/>
         </div>
         <textarea placeholder="Anmerkungen" value={form.notiz} onChange={e=>F("notiz",e.target.value)} style={{...inputStyle,height:60,resize:"vertical",marginBottom:16}}/>
-        <div style={{background:"#f0f6fc",border:"1px solid #c5d9ed",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
-          <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer",fontSize:13,color:"#0f1f3d"}}>
-            <input type="checkbox" id="dsgvo-check" style={{marginTop:2,flexShrink:0,width:16,height:16}}/>
-            <span>Ich habe die <strong>Datenschutzhinweise</strong> gelesen und stimme der Verarbeitung meiner personenbezogenen Daten zur Auftragsabwicklung gemäß Art. 6 Abs. 1 lit. b DSGVO zu. Meine Daten werden ausschließlich für die Abwicklung des Werkstattauftrags verwendet und nicht an Dritte weitergegeben. <span style={{color:"#dc2626"}}>*</span></span>
+        <div style={{background:"#fff8e1",border:"1.5px solid #f59e0b",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontWeight:700,fontSize:12,color:"#92400e",letterSpacing:.5,marginBottom:8}}>🔒 DATENSCHUTZHINWEIS</div>
+          <p style={{fontSize:12,color:"#78350f",lineHeight:1.7,marginBottom:10}}>
+            Ihre personenbezogenen Daten werden von der <strong>HAS 17 GmbH – Drahtesel Plus</strong> ausschließlich zur Auftragsabwicklung verarbeitet. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Speicherdauer: 10 Jahre. Keine Weitergabe an Dritte. Auskunft, Berichtigung und Löschung jederzeit möglich (Art. 15–17 DSGVO).
+          </p>
+          <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
+            <input type="checkbox" id="dsgvo-check" style={{marginTop:3,flexShrink:0,width:16,height:16,accentColor:"#1a56a0"}}/>
+            <span style={{fontSize:12,color:"#78350f",fontWeight:600}}>Ich habe den Datenschutzhinweis gelesen und stimme zu. <span style={{color:"#dc2626"}}>*</span></span>
           </label>
         </div>
         <div style={{display:"flex",gap:12}}>
@@ -1737,10 +1741,25 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB beac
 
 function NeuKundeForm({onSave,onAbbruch}){
   const [form,setForm]=useState({vorname:"",nachname:"",email:"",telefon:"",whatsapp:"",strasse:"",hausnr:"",plz:"",ort:"",land:"Deutschland",notiz:""});
+  const [dsgvoOk,setDsgvoOk]=useState(false);
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
   return(<div><h2 style={{marginBottom:20}}>Neuer Kunde</h2><KundeFormFelder form={form} F={F}/>
-    <div style={{display:"flex",gap:12,marginTop:20}}>
-      <button onClick={()=>{if(!form.vorname||!form.nachname)return alert("Pflichtfelder!");onSave(form);}} style={btnPrimary}>Speichern</button>
+    <div style={{marginTop:20,background:"#fff8e1",border:"1.5px solid #f59e0b",borderRadius:10,padding:"14px 16px",marginBottom:16}}>
+      <div style={{fontWeight:700,fontSize:12,color:"#92400e",letterSpacing:.5,marginBottom:8}}>🔒 DATENSCHUTZHINWEIS</div>
+      <p style={{fontSize:12,color:"#78350f",lineHeight:1.7,marginBottom:10}}>
+        Die Kundendaten werden gemäß Art. 6 Abs. 1 lit. b DSGVO zur Auftragsabwicklung verarbeitet. Speicherdauer: 10 Jahre (§ 257 HGB). Keine Weitergabe an Dritte.
+      </p>
+      <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
+        <input type="checkbox" checked={dsgvoOk} onChange={e=>setDsgvoOk(e.target.checked)} style={{marginTop:3,flexShrink:0,width:16,height:16,accentColor:"#1a56a0"}}/>
+        <span style={{fontSize:12,color:"#78350f",fontWeight:600}}>Datenschutzhinweis bestätigt <span style={{color:"#dc2626"}}>*</span></span>
+      </label>
+    </div>
+    <div style={{display:"flex",gap:12}}>
+      <button onClick={()=>{
+        if(!form.vorname||!form.nachname)return alert("Pflichtfelder!");
+        if(!dsgvoOk)return alert("Bitte Datenschutzhinweis bestätigen.");
+        onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
+      }} style={btnPrimary}>Speichern</button>
       <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
     </div></div>);
 }
