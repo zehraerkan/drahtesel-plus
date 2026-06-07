@@ -618,7 +618,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
             Ihre personenbezogenen Daten werden von der <strong>HAS 17 GmbH – Drahtesel Plus</strong> ausschließlich zur Auftragsabwicklung verarbeitet. Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO. Speicherdauer: 10 Jahre. Keine Weitergabe an Dritte. Auskunft, Berichtigung und Löschung jederzeit möglich (Art. 15–17 DSGVO).
           </p>
           <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
-            <input type="checkbox" id="dsgvo-check" style={{marginTop:3,flexShrink:0,width:16,height:16,accentColor:"#1a56a0"}}/>
+            <input type="checkbox" id="dsgvo-check" style={{marginTop:3,flexShrink:0,width:16,height:16}}/>
             <span style={{fontSize:12,color:"#78350f",fontWeight:600}}>Ich habe den Datenschutzhinweis gelesen und stimme zu. <span style={{color:"#dc2626"}}>*</span></span>
           </label>
         </div>
@@ -1623,28 +1623,26 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <button onClick={()=>{
             const k=kunde;
-            const text=[
-              "AUSKUNFT NACH ART. 15 DSGVO",
-              "━━━━━━━━━━━━━━━━━━━━━━━━",
-              `Name: ${k.vorname} ${k.nachname}`,
-              `Kunden-Nr.: ${k.kdNr}`,
-              `E-Mail: ${k.email||"—"}`,
-              `Telefon: ${k.telefon||"—"}`,
-              `WhatsApp: ${k.whatsapp||"—"}`,
-              `Adresse: ${k.strasse||""} ${k.hausnr||""}, ${k.plz||""} ${k.ort||""}`,
-              `Erfasst am: ${k.erstellt||"—"}`,
-              k.dsgvoZustimmung?`DSGVO-Einwilligung: Ja (${k.dsgvoDatum?new Date(k.dsgvoDatum).toLocaleDateString("de-DE"):"—"})`:"DSGVO-Einwilligung: Nicht digital erfasst",
-              "",
-              "Zweck der Verarbeitung: Auftragsabwicklung Fahrradwerkstatt",
-              "Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung)",
-              "Speicherdauer: 10 Jahre (§ 257 HGB, § 147 AO)",
+            const sep="---";
+            const lines=["AUSKUNFT NACH ART. 15 DSGVO",sep,
+              "Name: "+k.vorname+" "+k.nachname,
+              "Kunden-Nr.: "+k.kdNr,
+              "E-Mail: "+(k.email||"—"),
+              "Telefon: "+(k.telefon||"—"),
+              "WhatsApp: "+(k.whatsapp||"—"),
+              "Adresse: "+(k.strasse||"")+" "+(k.hausnr||"")+", "+(k.plz||"")+" "+(k.ort||""),
+              "Erfasst am: "+(k.erstellt||"—"),
+              k.dsgvoZustimmung?"DSGVO-Einwilligung: Ja":"DSGVO-Einwilligung: Nicht digital erfasst",
+              sep,
+              "Zweck: Auftragsabwicklung Fahrradwerkstatt",
+              "Rechtsgrundlage: Art. 6 Abs. 1 lit. b DSGVO",
+              "Speicherdauer: 10 Jahre (§ 257 HGB)",
               "Verantwortlicher: HAS 17 GmbH, Fehrbellinerstr. 17, 10119 Berlin",
-            ].join("
-");
-            const blob=new Blob([text],{type:"text/plain;charset=utf-8"});
+            ];
+            const blob=new Blob([lines.join("\r\n")],{type:"text/plain;charset=utf-8"});
             const url=URL.createObjectURL(blob);
             const a=document.createElement("a");
-            a.href=url;a.download=`Datenauszug_${k.nachname}_${k.kdNr}.txt`;
+            a.href=url;a.download="Datenauszug_"+k.nachname+"_"+k.kdNr+".txt";
             a.click();URL.revokeObjectURL(url);
           }} style={{...btnSecondary,fontSize:12,color:"#92400e",borderColor:"#f59e0b"}}>
             📄 Datenauskunft (Art. 15)
@@ -1750,7 +1748,7 @@ function NeuKundeForm({onSave,onAbbruch}){
         Die Kundendaten werden gemäß Art. 6 Abs. 1 lit. b DSGVO zur Auftragsabwicklung verarbeitet. Speicherdauer: 10 Jahre (§ 257 HGB). Keine Weitergabe an Dritte.
       </p>
       <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
-        <input type="checkbox" checked={dsgvoOk} onChange={e=>setDsgvoOk(e.target.checked)} style={{marginTop:3,flexShrink:0,width:16,height:16,accentColor:"#1a56a0"}}/>
+        <input type="checkbox" checked={dsgvoOk} onChange={e=>setDsgvoOk(e.target.checked)} style={{marginTop:3,flexShrink:0,width:16,height:16}}/>
         <span style={{fontSize:12,color:"#78350f",fontWeight:600}}>Datenschutzhinweis bestätigt <span style={{color:"#dc2626"}}>*</span></span>
       </label>
     </div>
