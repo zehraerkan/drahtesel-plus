@@ -4,36 +4,85 @@ import { useState, useEffect, useRef, useCallback } from "react";
 const SUPA_URL = "https://dtpjypraefamxgssklgv.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0cGp5cHJhZWZhbXhnc3NrbGd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyMjE0MjUsImV4cCI6MjA5Mjc5NzQyNX0.-_v3uPQzyCbLt6irMATmZsIspEbaRt7jWcO1ltZMHDY";
 
-const HEADERS = {
-  "Content-Type": "application/json",
-  "apikey": SUPA_KEY,
-  "Authorization": `Bearer ${SUPA_KEY}`,
-  "Prefer": "return=representation",
-};
+// ─── SUPABASE AUTH ────────────────────────────────────────────────────────────
+let _authToken = null;
+
+function getHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "apikey": SUPA_KEY,
+    "Authorization": `Bearer ${_authToken || SUPA_KEY}`,
+    "Prefer": "return=representation",
+  };
+}
+
+const HEADERS = getHeaders();
+
+async function supaSignIn(email, passwort) {
+  const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "apikey": SUPA_KEY },
+    body: JSON.stringify({ email, password: passwort }),
+  });
+  if (!r.ok) throw new Error("Ungueltige E-Mail oder Passwort.");
+  const data = await r.json();
+  _authToken = data.access_token;
+  try { localStorage.setItem("dp_auth_token", _authToken); } catch {}
+  return data;
+}
+
+async function supaSignOut() {
+  try {
+    await fetch(`${SUPA_URL}/auth/v1/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SUPA_KEY, "Authorization": `Bearer ${_authToken}` },
+    });
+  } catch {}
+  _authToken = null;
+  try { localStorage.removeItem("dp_auth_token"); } catch {}
+}
+
+async function supaGetUser(token) {
+  const r = await fetch(`${SUPA_URL}/auth/v1/user`, {
+    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${token}` },
+  });
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function supaRefreshToken() {
+  try {
+    const stored = localStorage.getItem("dp_auth_token");
+    if (!stored) return false;
+    const user = await supaGetUser(stored);
+    if (user && user.id) { _authToken = stored; return true; }
+  } catch {}
+  return false;
+}
 
 // ─── SUPABASE YARDIMCILARI ────────────────────────────────────────────────────
 async function dbGet(table) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=erstellt.desc`, { headers: HEADERS });
+  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=erstellt.desc`, { headers: getHeaders() });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbInsert(table, row) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
-    method: "POST", headers: HEADERS, body: JSON.stringify(row),
+    method: "POST", headers: getHeaders(), body: JSON.stringify(row),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbUpdate(table, id, row) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
-    method: "PATCH", headers: HEADERS, body: JSON.stringify(row),
+    method: "PATCH", headers: getHeaders(), body: JSON.stringify(row),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbDelete(table, id) {
   const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
-    method: "DELETE", headers: HEADERS,
+    method: "DELETE", headers: getHeaders(),
   });
   if (!r.ok) throw new Error(await r.text());
 }
@@ -44,7 +93,7 @@ async function uploadFoto(file, entityType, entityId) {
   const path = `${entityType}/${entityId}/${genId()}.${ext}`;
   const r = await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, {
     method: "POST",
-    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`, "Content-Type": file.type },
+    headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${_authToken||SUPA_KEY}`, "Content-Type": file.type },
     body: file,
   });
   if (!r.ok) throw new Error(await r.text());
@@ -54,11 +103,11 @@ async function uploadFoto(file, entityType, entityId) {
 }
 async function deleteFoto(fotoId, url) {
   const path = url.split("/public/fotos/")[1];
-  if (path) await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, { method: "DELETE", headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}` } });
+  if (path) await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, { method: "DELETE", headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${_authToken||SUPA_KEY}` } });
   await dbDelete("fotos", fotoId);
 }
 async function getFotos(entityType, entityId) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/fotos?entity_type=eq.${entityType}&entity_id=eq.${entityId}&select=*`, { headers: HEADERS });
+  const r = await fetch(`${SUPA_URL}/rest/v1/fotos?entity_type=eq.${entityType}&entity_id=eq.${entityId}&select=*`, { headers: getHeaders() });
   if (!r.ok) return [];
   return r.json();
 }
@@ -253,6 +302,7 @@ export default function DrahteselApp() {
   const startScreen=new URLSearchParams(window.location.search).get("mode")==="kunde"?"kunde-selbst":"login";
   const [screen,setScreen]=useState(startScreen);
   const [isMobile]=useState(()=>window.innerWidth<768);
+  const [authChecking,setAuthChecking]=useState(startScreen!=="kunde-selbst");
   const [benutzer,setBenutzer]=useState(null);
   const [benutzerListe,setBenutzerListe]=useState(()=>{
     // Önce localStorage'dan yükle (Supabase yüklenene kadar)
@@ -306,6 +356,36 @@ export default function DrahteselApp() {
   }, []);
 
   useEffect(()=>{ ladeBenutzer(); },[ladeBenutzer]);
+
+  // Sayfa yenilenince otomatik oturum kontrolü
+  useEffect(()=>{
+    if(startScreen==="kunde-selbst"){setAuthChecking(false);return;}
+    async function checkAuth(){
+      const ok=await supaRefreshToken();
+      if(ok){
+        try{
+          const userData=await supaGetUser(_authToken);
+          if(userData&&userData.id){
+            let rolle="mitarbeiter"; let name=userData.email;
+            try{
+              const rolesResp=await fetch(
+                `${SUPA_URL}/rest/v1/user_roles?id=eq.${userData.id}&select=*`,
+                {headers:getHeaders()}
+              );
+              if(rolesResp.ok){
+                const roles=await rolesResp.json();
+                if(roles.length>0){rolle=roles[0].rolle;name=roles[0].name||userData.email;}
+              }
+            }catch{}
+            setBenutzer({id:userData.id,name,email:userData.email,rolle});
+            setScreen("dashboard");
+          }
+        }catch(e){console.warn("Auth check failed:",e);}
+      }
+      setAuthChecking(false);
+    }
+    checkAuth();
+  },[]);
 
   const ladeAlles = useCallback(async () => {
     if (!benutzer) return;
@@ -438,8 +518,33 @@ export default function DrahteselApp() {
   }
 
   // ── SCREENS ─────────────────────────────────────────────────────────────────
-  if(screen==="login") return <LoginScreen benutzerListe={benutzerListe}
-    onLogin={(u)=>{setBenutzer(u);setScreen("dashboard");}}
+  // Auth kontrol edilirken loading göster
+  if(authChecking) return(
+    <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&display=swap" rel="stylesheet"/>
+      <img src={LOGO_SRC} alt="" style={{width:80,height:80,objectFit:"contain"}}/>
+      <div style={{color:COLORS.accent,fontWeight:700,fontSize:18,letterSpacing:2}}>DRAHTESEL PLUS</div>
+      <div style={{color:COLORS.muted,fontSize:13}}>Laden...</div>
+    </div>
+  );
+
+  if(screen==="login") return <LoginScreen
+    onLogin={async(email,passwort)=>{
+      const data=await supaSignIn(email,passwort);
+      let rolle="mitarbeiter"; let name=data.user.email;
+      try{
+        const rolesResp=await fetch(
+          `${SUPA_URL}/rest/v1/user_roles?id=eq.${data.user.id}&select=*`,
+          {headers:getHeaders()}
+        );
+        if(rolesResp.ok){
+          const roles=await rolesResp.json();
+          if(roles.length>0){rolle=roles[0].rolle;name=roles[0].name||data.user.email;}
+        }
+      }catch{}
+      setBenutzer({id:data.user.id,name,email:data.user.email,rolle});
+      setScreen("dashboard");
+    }}
     onKundeLogin={()=>setScreen("kunde-selbst")}/>;
 
   if(screen==="kunde-selbst") return <KundeSelbsteintragenScreen
@@ -455,7 +560,7 @@ export default function DrahteselApp() {
       {/* Mobile overlay backdrop */}
       {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0008",zIndex:88}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
-        onLogout={()=>{setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);}}
+        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);}}
         isMobile={isMobile}/>}
       <button onClick={()=>setSidebarOffen(p=>!p)} style={{position:"fixed",top:12,left:sidebarOffen&&!isMobile?236:12,zIndex:99,background:COLORS.accent,border:"none",borderRadius:8,width:36,height:36,cursor:"pointer",color:"#000",fontWeight:"bold",fontSize:18,transition:"left .2s",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px #0006"}}>
         {sidebarOffen?"✕":"☰"}
@@ -559,9 +664,20 @@ export default function DrahteselApp() {
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
-function LoginScreen({benutzerListe,onLogin,onKundeLogin}){
-  const [name,setName]=useState("");const [pw,setPw]=useState("");const [fehler,setFehler]=useState("");
-  function login(){const u=benutzerListe.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.passwort===pw);if(u)onLogin(u);else setFehler("Falscher Benutzername oder Passwort.");}
+function LoginScreen({onLogin,onKundeLogin}){
+  const [email,setEmail]=useState("");
+  const [pw,setPw]=useState("");
+  const [fehler,setFehler]=useState("");
+  const [laden,setLaden]=useState(false);
+
+  async function login(){
+    if(!email||!pw)return setFehler("Bitte E-Mail und Passwort eingeben.");
+    setLaden(true);setFehler("");
+    try{ await onLogin(email,pw); }
+    catch(e){ setFehler(e.message||"Ungueltige E-Mail oder Passwort."); }
+    finally{ setLaden(false); }
+  }
+
   return(
     <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:32}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
@@ -572,14 +688,20 @@ function LoginScreen({benutzerListe,onLogin,onKundeLogin}){
       </div>
       <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"36px 40px",width:340,display:"flex",flexDirection:"column",gap:16}}>
         <div style={{color:COLORS.muted,fontSize:13,fontWeight:600,letterSpacing:1}}>MITARBEITER LOGIN</div>
-        <input placeholder="Benutzername" value={name} onChange={e=>setName(e.target.value)} style={inputStyle} onKeyDown={e=>e.key==="Enter"&&login()}/>
-        <input placeholder="Passwort" type="password" value={pw} onChange={e=>setPw(e.target.value)} style={inputStyle} onKeyDown={e=>e.key==="Enter"&&login()}/>
-        {fehler&&<div style={{color:COLORS.red,fontSize:13}}>{fehler}</div>}
-        <button onClick={login} style={btnPrimary}>Anmelden</button>
-        <div style={{textAlign:"center",color:COLORS.muted,fontSize:12}}>— oder —</div>
-        <button onClick={onKundeLogin} style={{...btnSecondary,fontSize:13}}>Als Kunde Daten eintragen →</button>
+        <input placeholder="E-Mail Adresse" type="email" value={email}
+          onChange={e=>setEmail(e.target.value)} style={inputStyle}
+          onKeyDown={e=>e.key==="Enter"&&login()}/>
+        <input placeholder="Passwort" type="password" value={pw}
+          onChange={e=>setPw(e.target.value)} style={inputStyle}
+          onKeyDown={e=>e.key==="Enter"&&login()}/>
+        {fehler&&<div style={{color:COLORS.red,fontSize:13,padding:"8px 12px",background:"#fee2e2",borderRadius:6}}>{fehler}</div>}
+        <button onClick={login} disabled={laden} style={{...btnPrimary,opacity:laden?.7:1}}>
+          {laden?"Anmelden...":"Anmelden"}
+        </button>
+        <div style={{textAlign:"center",color:COLORS.muted,fontSize:12}}>- oder -</div>
+        <button onClick={onKundeLogin} style={{...btnSecondary,fontSize:13}}>Als Kunde Daten eintragen</button>
       </div>
-
+      <div style={{color:COLORS.muted,fontSize:11}}>Gesichert mit Supabase Auth - EU-Server Frankfurt</div>
     </div>
   );
 }
