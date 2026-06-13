@@ -415,6 +415,15 @@ export default function DrahteselApp() {
     setScreen(screen);
   }
   const [toast,setToast]=useState(null);
+  const [confirmModal,setConfirmModal]=useState(null); // {msg,onOk,okLabel,okColor,icon}
+  const [alertModal,setAlertModal]=useState(null);     // {msg,icon}
+
+  function showConfirm(msg,onOk,opts={}){
+    setConfirmModal({msg,onOk,okLabel:opts.okLabel||"Löschen",okColor:opts.okColor||null,icon:opts.icon||"⚠️"});
+  }
+  function showAlert(msg,opts={}){
+    setAlertModal({msg,icon:opts.icon||"ℹ️"});
+  }
   const [sidebarOffen,setSidebarOffen]=useState(!isMobile);
   const [laden,setLaden]=useState(false);
 
@@ -646,7 +655,12 @@ export default function DrahteselApp() {
         ☰
       </button>}
       {laden&&<div style={{position:"fixed",top:0,left:0,right:0,height:3,background:COLORS.accent,zIndex:999,animation:"pulse 1s infinite"}}/>}
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+      {laden&&screen==="auftraege"&&(
+        <div style={{position:"fixed",inset:0,background:`${COLORS.bg}cc`,zIndex:90,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{color:COLORS.accent,fontSize:14,fontWeight:600}}>Laden…</div>
+        </div>
+      )}
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
       <main style={{flex:1,overflow:"auto",overflowX:"hidden",padding:isMobile?"56px 12px 24px":"56px 28px 24px",minWidth:0,maxWidth:"100%"}}>
         {/* BREADCRUMB */}
         {breadcrumb.length>1&&(
@@ -687,6 +701,7 @@ export default function DrahteselApp() {
           onAuftrag={(a)=>{setSelAuftrag(a);setPrevScreen("kunde-detail");setScreen("auftrag-detail");}}
           onRechnung={(r)=>{setSelRechnung(r);setScreen("rechnung-detail");}}
           onAbbruch={()=>setScreen("kunden")}
+          showConfirm={showConfirm} showAlert={showAlert}
         />}
         {screen==="neu-kunde"&&<NeuKundeForm
           onSave={async(k)=>{try{await kundeHinzufuegen(k);showToast("Kunde angelegt!");setScreen("kunden");}catch(e){showToast("Fehler: "+e.message,"err");}}}
@@ -739,7 +754,7 @@ export default function DrahteselApp() {
             }catch(e){showToast("Fehler: "+e.message,"err");}
           }}
           onAbbruch={()=>setScreen(prevScreen||"auftraege")}
-          showToast={showToast}/>}
+          showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="rechnungen"&&<AlleRechnungen rechnungen={rechnungen} kunden={kunden}
           onDetail={(r,k)=>{setSelRechnung(r);setSelKunde(k);setScreen("rechnung-detail");}}/>}
         {screen==="rechnung-detail"&&selRechnung&&<RechnungDetail
@@ -747,7 +762,7 @@ export default function DrahteselApp() {
           onAbbruch={()=>setScreen(selAuftrag?"auftrag-detail":"rechnungen")}
           onLoeschen={async(id)=>{try{await rechnungLoeschen(id);setScreen("rechnungen");showToast("Rechnung gelöscht.");}catch(e){showToast("Fehler beim Löschen","err");}}}
           onAktualisieren={async(r)=>{try{await rechnungAktualisieren(r);setSelRechnung(r);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
-          showToast={showToast}/>}
+          showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="katalog"&&<KatalogScreen/>}
         {screen==="envanter"&&<EnvanterScreen
           envanter={envanter}
@@ -763,9 +778,18 @@ export default function DrahteselApp() {
           onKundeWaehle={(k)=>{setSelKunde(k);setSelBisiklet(null);setScreen("neu-auftrag");}}
           onNeuKunde={()=>setScreen("neu-kunde")}
           onAbbruch={()=>setScreen("dashboard")}/>}
-        {screen==="einstellungen"&&<EinstellungenScreen benutzer={benutzer} benutzerListe={benutzerListe} setBenutzerListe={setBenutzerListe} showToast={showToast}/>}
+        {screen==="einstellungen"&&<EinstellungenScreen benutzer={benutzer} benutzerListe={benutzerListe} setBenutzerListe={setBenutzerListe} showToast={showToast} showConfirm={showConfirm}/>}
       </main>
       {toast&&<Toast msg={toast.msg} art={toast.art}/>}
+      <OfflineBanner/>
+      {confirmModal&&<ConfirmModal
+        msg={confirmModal.msg} icon={confirmModal.icon}
+        okLabel={confirmModal.okLabel} okColor={confirmModal.okColor}
+        onOk={()=>{confirmModal.onOk();setConfirmModal(null);}}
+        onCancel={()=>setConfirmModal(null)}/>}
+      {alertModal&&<AlertModal
+        msg={alertModal.msg} icon={alertModal.icon}
+        onClose={()=>setAlertModal(null)}/>}
     </div>
   );
 }
@@ -846,9 +870,9 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
         <div style={{display:"flex",gap:12}}>
           <button onClick={onBack} style={btnSecondary}>Zurück</button>
           <button disabled={saving} onClick={async()=>{
-            if(!form.vorname||!form.nachname||!form.email)return alert("Pflichtfelder ausfüllen.");
+            if(!form.vorname||!form.nachname||!form.email){showToastGlobal("Pflichtfelder ausfüllen.","err");return;}
             const chk=document.getElementById("dsgvo-check");
-            if(!chk||!chk.checked)return alert("Bitte stimmen Sie der Datenschutzerklärung zu.");
+            if(!chk||!chk.checked){showToastGlobal("Bitte stimmen Sie dem Datenschutzhinweis zu.","err");return;}
             setSaving(true);await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});setSaving(false);
           }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Speichern...":"Absenden"}</button>
         </div>
@@ -1011,7 +1035,8 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
             </div>
           );
         })}
-        {!gefiltert.length&&<div style={{color:COLORS.muted,textAlign:"center",padding:40}}>Keine Aufträge gefunden.</div>}
+        {!gefiltert.length&&auftraege.length===0&&[1,2,3,4].map(i=><SkeletonCard key={i} height={72}/>)}
+        {!gefiltert.length&&auftraege.length>0&&<div style={{color:COLORS.muted,textAlign:"center",padding:40}}>Keine Aufträge gefunden.</div>}
       </div>
     </div>
   );
@@ -1127,7 +1152,7 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
       <div style={{marginBottom:20}}><label style={labelStyle}>Interne Notizen</label>
         <textarea placeholder="Werkstatt-Notizen …" value={form.notizen} onChange={e=>F("notizen",e.target.value)} style={{...inputStyle,height:60,resize:"vertical"}}/></div>
       <div style={{display:"flex",gap:12}}>
-        <button onClick={()=>{if(!form.fahrradModell)return alert("Bitte Fahrrad Modell eingeben.");onSave({...form,nummer:auftragNr,brutto,netto:calcNetto(brutto),mwst:calcMwst(brutto)});}} style={btnPrimary}>✅ Auftrag erstellen</button>
+        <button onClick={()=>{if(!form.fahrradModell){showToast("Bitte Fahrrad Modell eingeben.","err");return;}onSave({...form,nummer:auftragNr,brutto,netto:calcNetto(brutto),mwst:calcMwst(brutto)});}} style={btnPrimary}>✅ Auftrag erstellen</button>
         <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
       </div>
     </div>
@@ -1175,7 +1200,7 @@ function WaMessageEditor({template,kunde,auftrag}){
   );
 }
 
-function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast}){
+function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm}){
   const [notizen,setNotizen]=useState((auftrag&&auftrag.notizen)||"");
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
@@ -1222,7 +1247,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnSecondary}>🖨️ Drucken</button>
           {onLoeschen&&(auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt")&&(
-            <button onClick={()=>{if(confirm("Auftrag silinsin mi?"))onLoeschen(auftrag.id);}}
+            <button onClick={()=>showConfirm("Auftrag wirklich löschen?",()=>onLoeschen(auftrag.id),{icon:"🗑️",okLabel:"Sil"})}
               style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
           )}
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
@@ -1555,7 +1580,8 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
   }
 
   async function silFoto(foto){
-    if(!confirm("Bu fotoğrafı sil?"))return;
+    // Native confirm kullan (FotoGalerie kendi modal'ı yönetemiyor)
+    if(!window.confirm("Bu fotoğrafı sil?"))return;
     try{
       if(!foto.local)await deleteFoto(foto.id,foto.url);
       setFotos(p=>p.filter(f=>f.id!==foto.id));
@@ -1671,7 +1697,7 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
       {!savedBisikletId ? (
         <div style={{display:"flex",gap:12}}>
           <button disabled={saving} onClick={async()=>{
-            if(!form.marke&&!form.modell)return alert("Bitte Marke oder Modell eingeben.");
+            if(!form.marke&&!form.modell){showToast("Bitte Marke oder Modell eingeben.","err");return;}
             setSaving(true);
             const saved=await onSave({...form,tempFotoId:tempId});
             if((saved&&saved.id))setSavedBisikletId(saved.id);
@@ -1836,13 +1862,14 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
             <div style={{fontSize:36,marginBottom:10}}>👥</div>
             <div style={{fontSize:14}}>{suche?"Keine Kunden gefunden.":"Noch keine Kunden angelegt."}</div>
             {!suche&&<button onClick={onNeu} style={{...btnPrimary,marginTop:16}}>+ Ersten Kunden anlegen</button>}
+          {!gefiltert.length&&kunden.length===0&&suche===""&&[1,2,3].map(i=><SkeletonCard key={i} height={64}/>)}
           </div>
         )}
       </div>
     </div>
   );
 }
-function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoeschen,onNeuBisiklet,onBisikletDetail,onBisikletLoeschen,onNeuAuftrag,onAuftrag,onRechnung,onAbbruch}){
+function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoeschen,onNeuBisiklet,onBisikletDetail,onBisikletLoeschen,onNeuAuftrag,onAuftrag,onRechnung,onAbbruch,showConfirm,showAlert}){
   const [bearbeiten,setBearbeiten]=useState(false);
   const [form,setForm]=useState({...kunde});
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -1865,7 +1892,7 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
         <div style={{display:"flex",gap:8}}>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
           <button onClick={()=>setBearbeiten(true)} style={btnSecondary}>Bearbeiten</button>
-          <button onClick={()=>{if(confirm("Kunde löschen?"))onLoeschen(kunde.id);}} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>Löschen</button>
+          <button onClick={()=>showConfirm("Kunden wirklich löschen? Alle zugehörigen Daten bleiben erhalten.",()=>onLoeschen(kunde.id),{icon:"🗑️",okLabel:"Löschen"})} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>Löschen</button>
         </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
@@ -1911,11 +1938,9 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
             📄 Datenauskunft (Art. 15)
           </button>
           <button onClick={()=>{
-            if(confirm(`Alle Daten von "${kunde.vorname} ${kunde.nachname}" unwiderruflich löschen?
+            showConfirm(`Alle Daten von "${kunde.vorname} ${kunde.nachname}" unwiderruflich löschen?
 
-Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB beachten!`)){
-              onLoeschen(kunde.id);
-            }
+Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()=>onLoeschen(kunde.id),{icon:"⚖️",okLabel:"Löschen",okColor:"#dc2626"})
           }} style={{...btnSecondary,fontSize:12,color:COLORS.red,borderColor:COLORS.red}}>
             🗑️ Löschantrag (Art. 17)
           </button>
@@ -1958,7 +1983,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB beac
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={e=>{e.stopPropagation();onNeuAuftrag(b);}} style={{...btnSecondary,fontSize:12,padding:"4px 10px",color:COLORS.teal,borderColor:COLORS.teal}}>+ Auftrag</button>
             <span style={{color:COLORS.muted,fontSize:11}}>{auftraege.filter(a=>a.bisikletId===b.id).length} Auftr.</span>
-            <button onClick={e=>{e.stopPropagation();if(window.confirm(`"${b.marke||""} ${b.modell||""}" silinsin mi?`))onBisikletLoeschen(b.id);}}
+            <button onClick={e=>{e.stopPropagation();showConfirm(`"${b.marke||""} ${b.modell||""}" silinsin mi?`,()=>onBisikletLoeschen(b.id),{icon:"🚲",okLabel:"Sil"});}}
               style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:16,padding:"0 4px"}}>🗑️</button>
           </div>
         </div>
@@ -2017,8 +2042,8 @@ function NeuKundeForm({onSave,onAbbruch}){
     </div>
     <div style={{display:"flex",gap:12}}>
       <button onClick={()=>{
-        if(!form.vorname||!form.nachname)return alert("Pflichtfelder!");
-        if(!dsgvoOk)return alert("Bitte Datenschutzhinweis bestätigen.");
+        if(!form.vorname||!form.nachname){showToast("Pflichtfelder ausfüllen!","err");return;}
+        if(!dsgvoOk){showToast("Bitte Datenschutzhinweis bestätigen.","err");return;}
         onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
       }} style={btnPrimary}>Speichern</button>
       <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
@@ -2200,7 +2225,7 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
 }
 
 // ─── RECHNUNG DETAIL ─────────────────────────────────────────────────────────
-function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,showToast}){
+function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,showToast,showConfirm}){
   const printRef=useRef();const k=kunde||{};
   const [editModus,setEditModus]=useState(false);
   const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
@@ -2225,7 +2250,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
           {k.whatsapp&&<a href={`https://wa.me/${(k.whatsapp||"").replace(/\D/g,"")}?text=Hallo%20${k.vorname}!%20Ihre%20Rechnung%20Nr.%20${rechnung.nummer}%20über%20${formatEuro(rechnung.brutto||0)}%20-%20Drahtesel%20Plus`}
             target="_blank" rel="noopener noreferrer" style={{...btnSecondary,textDecoration:"none",fontSize:13,color:"#25D366",borderColor:"#25D366"}}>💬 WhatsApp</a>}
           <button onClick={()=>setEditModus(p=>!p)} style={{...btnSecondary,color:editModus?COLORS.accent:COLORS.muted,borderColor:editModus?COLORS.accent:COLORS.border,fontSize:13}}>✏️ Düzenle</button>
-          <button onClick={()=>{if(confirm("Rechnung silinsin mi? Bu işlem geri alınamaz."))onLoeschen(rechnung.id);}} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red,fontSize:13}}>🗑️ Sil</button>
+          <button onClick={()=>showConfirm("Rechnung wirklich löschen? Dies kann nicht rückgängig gemacht werden.",()=>onLoeschen(rechnung.id),{icon:"🧾",okLabel:"Löschen"})} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red,fontSize:13}}>🗑️ Sil</button>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
         </div>
       </div>
@@ -2363,7 +2388,8 @@ function KatalogScreen(){
     setNeuGruppe("");
   }
   function gruppeLoeschen(idx){
-    if(!confirm("Gruppe löschen?"))return;
+    // KatalogScreen kendi confirm'ini yönetiyor
+    if(!window.confirm("Gruppe löschen?"))return;
     speichern(katalog.filter((_,i)=>i!==idx));
   }
   function itemHinzufuegen(){
@@ -2474,7 +2500,7 @@ function KatalogScreen(){
 }
 
 // ─── EINSTELLUNGEN ────────────────────────────────────────────────────────────
-function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}){
+function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,showConfirm}){
   const [neuName,setNeuName]=useState("");
   const [neuPw,setNeuPw]=useState("");
   const [neuRolle,setNeuRolle]=useState("mitarbeiter");
@@ -2549,14 +2575,14 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={{background:u.rolle==="admin"?`${COLORS.accent}22`:`${COLORS.blue}22`,color:u.rolle==="admin"?COLORS.accent:COLORS.blue,borderRadius:12,padding:"2px 10px",fontSize:11,fontWeight:600}}>{u.rolle}</span>
-          {u.id!==(benutzer&&benutzer.id)&&<button onClick={()=>{if(confirm(`"${u.name}" silinsin mi?`)){
+          {u.id!==(benutzer&&benutzer.id)&&<button onClick={()=>{showConfirm(`"${u.name}" silinsin mi?`,()=>{
               dbDelete("benutzer",u.id).catch(()=>{});
               setBenutzerListe(p=>{
                 const yeni=p.filter(x=>x.id!==u.id);
                 try{localStorage.setItem("dp_users",JSON.stringify(yeni));}catch{}
                 return yeni;
               });
-            }}}
+            },{icon:"👤",okLabel:"Sil"})}}
             style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:18,padding:"0 4px"}}>×</button>}
         </div>
       </div>))}
@@ -2577,7 +2603,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
             </select>
           </div>
           <button onClick={()=>{
-            if(!neuName.trim()||!neuPw.trim())return alert("Ad ve şifre zorunludur.");
+            if(!neuName.trim()||!neuPw.trim()){showToast("Ad ve şifre zorunludur.","err");return;}
             const yeniK={id:genId(),name:neuName.trim(),passwort:neuPw.trim(),rolle:neuRolle};
             dbInsert("benutzer",{id:yeniK.id,data:yeniK})
               .then(()=>showToast(`"${yeniK.name}" Supabase'e kaydedildi ✓`))
@@ -2703,6 +2729,68 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast}
 // ─── KÜÇÜK YARDIMCILAR ───────────────────────────────────────────────────────
 function InfoKarte({titel,children}){return(<div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:8}}><div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>{titel.toUpperCase()}</div>{children}</div>);}
 function InfoZeile({label,wert}){return(<div style={{display:"flex",gap:12,fontSize:13,marginBottom:6}}><span style={{color:COLORS.muted,minWidth:80}}>{label}:</span><span>{wert}</span></div>);}
+
+// ─── CONFIRM MODAL ────────────────────────────────────────────────────────────
+function ConfirmModal({msg,onOk,onCancel,okLabel="Löschen",okColor=null,icon="⚠️"}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000a",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
+      onClick={onCancel}>
+      <div onClick={e=>e.stopPropagation()} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:360,boxShadow:"0 8px 40px #0004"}}>
+        <div style={{fontSize:32,textAlign:"center",marginBottom:12}}>{icon}</div>
+        <div style={{fontWeight:600,fontSize:15,textAlign:"center",marginBottom:20,lineHeight:1.5,color:COLORS.text}}>{msg}</div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onCancel} style={{...btnSecondary,flex:1}}>Abbrechen</button>
+          <button onClick={onOk} style={{...btnPrimary,flex:1,background:okColor||COLORS.red,color:"#fff"}}>{okLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ALERT MODAL ──────────────────────────────────────────────────────────────
+function AlertModal({msg,onClose,icon="ℹ️"}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000a",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:340,boxShadow:"0 8px 40px #0004"}}>
+        <div style={{fontSize:32,textAlign:"center",marginBottom:12}}>{icon}</div>
+        <div style={{fontWeight:500,fontSize:14,textAlign:"center",marginBottom:20,lineHeight:1.6,color:COLORS.text}}>{msg}</div>
+        <button onClick={onClose} style={{...btnPrimary,width:"100%"}}>OK</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── SKELETON LOADER ──────────────────────────────────────────────────────────
+function SkeletonCard({height=60}){
+  return(
+    <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 18px",height,overflow:"hidden",position:"relative"}}>
+      <div style={{position:"absolute",inset:0,background:`linear-gradient(90deg,transparent 0%,${COLORS.border} 50%,transparent 100%)`,animation:"shimmer 1.4s infinite"}}/>
+      <div style={{height:12,background:COLORS.border,borderRadius:6,width:"60%",marginBottom:10}}/>
+      <div style={{height:10,background:COLORS.border,borderRadius:6,width:"40%"}}/>
+    </div>
+  );
+}
+
+// ─── OFFLINE BANNER ──────────────────────────────────────────────────────────
+function OfflineBanner(){
+  const [offline,setOffline]=useState(!navigator.onLine);
+  useEffect(()=>{
+    const on=()=>setOffline(false);
+    const off=()=>setOffline(true);
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
+  if(!offline)return null;
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9998,background:"#dc2626",color:"#fff",
+      textAlign:"center",padding:"8px 16px",fontSize:13,fontWeight:600,boxShadow:"0 2px 8px #0004"}}>
+      📡 Keine Internetverbindung — Änderungen werden nicht gespeichert
+    </div>
+  );
+}
+
 function Toast({msg,art}){return(<div style={{position:"fixed",bottom:24,right:24,background:art==="ok"?COLORS.green:COLORS.red,color:"#fff",borderRadius:10,padding:"12px 20px",fontWeight:600,fontSize:13,zIndex:999,boxShadow:"0 4px 20px #0008"}}>{art==="ok"?"✓":"✕"} {msg}</div>);}
 
 const inputStyle={background:"#ffffff",border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 14px",color:COLORS.text,fontSize:14,width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"'IBM Plex Sans',sans-serif"};
@@ -2960,8 +3048,8 @@ function EnvanterForm({item,onSave,onAbbruch}){
 
       <div style={{display:"flex",gap:12}}>
         <button disabled={saving} onClick={async()=>{
-          if(!form.marke||!form.modell)return alert("Marke und Modell sind Pflichtfelder.");
-          if(!form.typ)return alert("Bitte Fahrradtyp (Herrenrad/Damenrad …) auswählen.");
+          if(!form.marke||!form.modell){showToast("Marke und Modell sind Pflichtfelder.","err");return;}
+          if(!form.typ){showToast("Bitte Fahrradtyp auswählen.","err");return;}
           setSaving(true);
           await onSave({...form,durum:form.durum||"Mevcut"});
           setSaving(false);
@@ -2996,7 +3084,7 @@ function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setEditModus(true)} style={btnSecondary}>✏️ Düzenle</button>
-          <button onClick={()=>{if(confirm(`"${item.marke} ${item.modell}" silinsin mi?`))onSil(item.id);}}
+          <button onClick={()=>{if(window.confirm(`"${item.marke} ${item.modell}" silinsin mi?`))onSil(item.id);}}
             style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
         </div>
