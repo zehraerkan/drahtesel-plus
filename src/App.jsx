@@ -1120,7 +1120,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   function delPosEdit(id){setEditPositionen(p=>p.filter(x=>x.id!==id));}
   const editBrutto=editPositionen.reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0);
   const posKatalog=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(posKatalogSuche.toLowerCase()))})).filter(g=>g.items.length>0);
-  const statusFlow=["Neu","Genehmigt","In Arbeit","Fertig"];
+  const statusFlow=["Neu","Genehmigt","In Arbeit","Fertig","Abgerechnet","Abgeholt"];
   const istAbgerechnet=auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt";
 
   function drucken(){
@@ -1163,12 +1163,22 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           <div style={{fontWeight:600,marginBottom:12,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>STATUS</div>
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
             {statusFlow.map((s,i)=>{
-              const isAktiv=auftrag.status===s;const isErreicht=statusFlow.indexOf(auftrag.status)>=i;const sCol=STATUS[s];
+              const isAktiv=auftrag.status===s;
+              const currentIdx=statusFlow.indexOf(auftrag.status);
+              const isErreicht=currentIdx>=i;
+              const sCol=STATUS[s];
+              // Abgerechnet'e manuel tıklanamaz (sadece Rechnung oluşturma ile geçilir)
+              const clickable=s!=="Abgerechnet";
               return(<div key={s} style={{display:"flex",alignItems:"center",gap:8}}>
-                <button onClick={()=>onStatusChange(auftrag.id,s)}
-                  style={{padding:"6px 16px",borderRadius:20,border:`2px solid ${isAktiv?sCol.farbe:isErreicht?sCol.farbe+"66":COLORS.border}`,
-                    background:isAktiv?sCol.bg:"transparent",color:isAktiv?sCol.farbe:isErreicht?sCol.farbe+"88":COLORS.muted,
-                    cursor:"pointer",fontSize:12,fontWeight:isAktiv?700:500,transition:"all .15s"}}>
+                <button
+                  onClick={()=>clickable&&onStatusChange(auftrag.id,s)}
+                  style={{padding:"6px 16px",borderRadius:20,
+                    border:`2px solid ${isAktiv?sCol.farbe:isErreicht?sCol.farbe+"66":COLORS.border}`,
+                    background:isAktiv?sCol.bg:"transparent",
+                    color:isAktiv?sCol.farbe:isErreicht?sCol.farbe+"88":COLORS.muted,
+                    cursor:clickable?"pointer":"default",
+                    fontSize:12,fontWeight:isAktiv?700:500,transition:"all .15s",
+                    opacity:!clickable&&!isAktiv&&!isErreicht?.5:1}}>
                   {sCol.label}
                 </button>
                 {i<statusFlow.length-1&&<span style={{color:COLORS.border}}>→</span>}
@@ -1176,12 +1186,6 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             })}
             {auftrag.status==="Fertig"&&(
               <button onClick={()=>setZahlungModal(true)} style={{...btnPrimary,marginLeft:16,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
-            )}
-            {auftrag.status==="Abgerechnet"&&(
-              <button onClick={()=>{if(confirm("Bisiklet teslim alındı olarak işaretlensin mi?"))onStatusChange(auftrag.id,"Abgeholt");}}
-                style={{...btnSecondary,marginLeft:16,padding:"6px 18px",fontSize:13,color:"#6b7280",borderColor:"#6b7280"}}>
-                📦 Bisiklet alındı
-              </button>
             )}
           </div>
         </div>
