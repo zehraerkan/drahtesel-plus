@@ -16,7 +16,8 @@ function getHeaders() {
   };
 }
 
-const HEADERS = getHeaders();
+let _refreshToken = null;
+let _tokenRefreshInterval = null;
 
 async function supaSignIn(email, passwort) {
   const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
@@ -27,11 +28,58 @@ async function supaSignIn(email, passwort) {
   if (!r.ok) throw new Error("Ungueltige E-Mail oder Passwort.");
   const data = await r.json();
   _authToken = data.access_token;
-  try { localStorage.setItem("dp_auth_token", _authToken); } catch {}
+  _refreshToken = data.refresh_token;
+  try {
+    localStorage.setItem("dp_auth_token", _authToken);
+    localStorage.setItem("dp_refresh_token", _refreshToken);
+  } catch {}
+  // Her 50 dakikada bir token otomatik yenile (1 saat dolmadan)
+  startTokenRefresh();
   return data;
 }
 
+async function supaRefreshAccessToken() {
+  try {
+    const storedRefresh = _refreshToken || localStorage.getItem("dp_refresh_token");
+    if (!storedRefresh) return false;
+    const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SUPA_KEY },
+      body: JSON.stringify({ refresh_token: storedRefresh }),
+    });
+    if (!r.ok) return false;
+    const data = await r.json();
+    _authToken = data.access_token;
+    _refreshToken = data.refresh_token;
+    try {
+      localStorage.setItem("dp_auth_token", _authToken);
+      localStorage.setItem("dp_refresh_token", _refreshToken);
+    } catch {}
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function startTokenRefresh() {
+  // Önceki interval varsa temizle
+  if (_tokenRefreshInterval) clearInterval(_tokenRefreshInterval);
+  // Her 50 dakikada bir token yenile
+  _tokenRefreshInterval = setInterval(async () => {
+    const ok = await supaRefreshAccessToken();
+    if (!ok) {
+      // Refresh başarısız — kullanıcıyı login'e yönlendir
+      clearInterval(_tokenRefreshInterval);
+      _authToken = null;
+      _refreshToken = null;
+      try { localStorage.removeItem("dp_auth_token"); localStorage.removeItem("dp_refresh_token"); } catch {}
+      window.location.reload();
+    }
+  }, 50 * 60 * 1000); // 50 dakika
+}
+
 async function supaSignOut() {
+  if (_tokenRefreshInterval) clearInterval(_tokenRefreshInterval);
   try {
     await fetch(`${SUPA_URL}/auth/v1/logout`, {
       method: "POST",
@@ -39,7 +87,11 @@ async function supaSignOut() {
     });
   } catch {}
   _authToken = null;
-  try { localStorage.removeItem("dp_auth_token"); } catch {}
+  _refreshToken = null;
+  try {
+    localStorage.removeItem("dp_auth_token");
+    localStorage.removeItem("dp_refresh_token");
+  } catch {}
 }
 
 async function supaGetUser(token) {
@@ -53,35 +105,67 @@ async function supaGetUser(token) {
 async function supaRefreshToken() {
   try {
     const stored = localStorage.getItem("dp_auth_token");
+    const storedRefresh = localStorage.getItem("dp_refresh_token");
     if (!stored) return false;
+    // Önce mevcut token'ı dene
     const user = await supaGetUser(stored);
-    if (user && user.id) { _authToken = stored; return true; }
+    if (user && user.id) {
+      _authToken = stored;
+      _refreshToken = storedRefresh;
+      startTokenRefresh(); // Periyodik yenilemeyi başlat
+      return true;
+    }
+    // Token süresi dolmuş — refresh token ile yenile
+    if (storedRefresh) {
+      const ok = await supaRefreshAccessToken();
+      if (ok) { startTokenRefresh(); return true; }
+    }
   } catch {}
   return false;
 }
 
+// 401 hatalarını yakala ve otomatik refresh yap
+async function fetchWithAuth(url, options = {}) {
+  options.headers = options.headers || getHeaders();
+  let r = await fetch(url, options);
+  if (r.status === 401) {
+    // Token süresi dolmuş — yenile ve tekrar dene
+    const refreshed = await supaRefreshAccessToken();
+    if (refreshed) {
+      options.headers = getHeaders(); // Yeni token ile header güncelle
+      r = await fetch(url, options);
+    } else {
+      // Refresh de başarısız — kullanıcıyı login'e at
+      _authToken = null;
+      try { localStorage.removeItem("dp_auth_token"); localStorage.removeItem("dp_refresh_token"); } catch {}
+      window.location.reload();
+    }
+  }
+  return r;
+}
+
 // ─── SUPABASE YARDIMCILARI ────────────────────────────────────────────────────
 async function dbGet(table) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?select=*&order=erstellt.desc`, { headers: getHeaders() });
+  const r = await fetchWithAuth(`${SUPA_URL}/rest/v1/${table}?select=*&order=erstellt.desc`);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbInsert(table, row) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}`, {
+  const r = await fetchWithAuth(`${SUPA_URL}/rest/v1/${table}`, {
     method: "POST", headers: getHeaders(), body: JSON.stringify(row),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbUpdate(table, id, row) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+  const r = await fetchWithAuth(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
     method: "PATCH", headers: getHeaders(), body: JSON.stringify(row),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
 async function dbDelete(table, id) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
+  const r = await fetchWithAuth(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
     method: "DELETE", headers: getHeaders(),
   });
   if (!r.ok) throw new Error(await r.text());
@@ -125,7 +209,8 @@ const STATUS = {
   "Genehmigt":  {farbe:COLORS.orange,bg:"#fb923c22",label:"✅ Genehmigt"},
   "In Arbeit":  {farbe:COLORS.purple,bg:"#a78bfa22",label:"🔧 In Arbeit"},
   "Fertig":     {farbe:COLORS.green, bg:"#4ade8022",label:"✓ Fertig"},
-  "Abgerechnet":{farbe:COLORS.accent,bg:"#e8b84b22",label:"🧾 Abgerechnet"},
+  "Abgerechnet":{farbe:COLORS.accent,bg:"#1a56a022",label:"🧾 Abgerechnet"},
+  "Abgeholt":   {farbe:"#6b7280",   bg:"#6b728022",label:"📦 Abgeholt"},
 };
 const LEISTUNGSKATALOG = [
   {gruppe:"Inspektion & Wartung — Cityrad / Tourenrad",items:[
@@ -357,7 +442,6 @@ export default function DrahteselApp() {
 
   useEffect(()=>{ ladeBenutzer(); },[ladeBenutzer]);
 
-  // Sayfa yenilenince otomatik oturum kontrolü
   useEffect(()=>{
     if(startScreen==="kunde-selbst"){setAuthChecking(false);return;}
     async function checkAuth(){
@@ -366,21 +450,15 @@ export default function DrahteselApp() {
         try{
           const userData=await supaGetUser(_authToken);
           if(userData&&userData.id){
-            let rolle="mitarbeiter"; let name=userData.email;
+            let rolle="mitarbeiter";let name=userData.email;
             try{
-              const rolesResp=await fetch(
-                `${SUPA_URL}/rest/v1/user_roles?id=eq.${userData.id}&select=*`,
-                {headers:getHeaders()}
-              );
-              if(rolesResp.ok){
-                const roles=await rolesResp.json();
-                if(roles.length>0){rolle=roles[0].rolle;name=roles[0].name||userData.email;}
-              }
+              const rr=await fetch(`${SUPA_URL}/rest/v1/user_roles?id=eq.${userData.id}&select=*`,{headers:getHeaders()});
+              if(rr.ok){const roles=await rr.json();if(roles.length>0){rolle=roles[0].rolle;name=roles[0].name||userData.email;}}
             }catch{}
             setBenutzer({id:userData.id,name,email:userData.email,rolle});
             setScreen("dashboard");
           }
-        }catch(e){console.warn("Auth check failed:",e);}
+        }catch{}
       }
       setAuthChecking(false);
     }
@@ -518,7 +596,6 @@ export default function DrahteselApp() {
   }
 
   // ── SCREENS ─────────────────────────────────────────────────────────────────
-  // Auth kontrol edilirken loading göster
   if(authChecking) return(
     <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&display=swap" rel="stylesheet"/>
@@ -531,16 +608,10 @@ export default function DrahteselApp() {
   if(screen==="login") return <LoginScreen
     onLogin={async(email,passwort)=>{
       const data=await supaSignIn(email,passwort);
-      let rolle="mitarbeiter"; let name=data.user.email;
+      let rolle="mitarbeiter";let name=data.user.email;
       try{
-        const rolesResp=await fetch(
-          `${SUPA_URL}/rest/v1/user_roles?id=eq.${data.user.id}&select=*`,
-          {headers:getHeaders()}
-        );
-        if(rolesResp.ok){
-          const roles=await rolesResp.json();
-          if(roles.length>0){rolle=roles[0].rolle;name=roles[0].name||data.user.email;}
-        }
+        const rr=await fetch(`${SUPA_URL}/rest/v1/user_roles?id=eq.${data.user.id}&select=*`,{headers:getHeaders()});
+        if(rr.ok){const roles=await rr.json();if(roles.length>0){rolle=roles[0].rolle;name=roles[0].name||data.user.email;}}
       }catch{}
       setBenutzer({id:data.user.id,name,email:data.user.email,rolle});
       setScreen("dashboard");
@@ -669,15 +740,13 @@ function LoginScreen({onLogin,onKundeLogin}){
   const [pw,setPw]=useState("");
   const [fehler,setFehler]=useState("");
   const [laden,setLaden]=useState(false);
-
   async function login(){
     if(!email||!pw)return setFehler("Bitte E-Mail und Passwort eingeben.");
     setLaden(true);setFehler("");
-    try{ await onLogin(email,pw); }
-    catch(e){ setFehler(e.message||"Ungueltige E-Mail oder Passwort."); }
-    finally{ setLaden(false); }
+    try{await onLogin(email,pw);}
+    catch(e){setFehler(e.message||"Ungueltige E-Mail oder Passwort.");}
+    finally{setLaden(false);}
   }
-
   return(
     <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:32}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
@@ -688,16 +757,10 @@ function LoginScreen({onLogin,onKundeLogin}){
       </div>
       <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"36px 40px",width:340,display:"flex",flexDirection:"column",gap:16}}>
         <div style={{color:COLORS.muted,fontSize:13,fontWeight:600,letterSpacing:1}}>MITARBEITER LOGIN</div>
-        <input placeholder="E-Mail Adresse" type="email" value={email}
-          onChange={e=>setEmail(e.target.value)} style={inputStyle}
-          onKeyDown={e=>e.key==="Enter"&&login()}/>
-        <input placeholder="Passwort" type="password" value={pw}
-          onChange={e=>setPw(e.target.value)} style={inputStyle}
-          onKeyDown={e=>e.key==="Enter"&&login()}/>
+        <input placeholder="E-Mail Adresse" type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} onKeyDown={e=>e.key==="Enter"&&login()}/>
+        <input placeholder="Passwort" type="password" value={pw} onChange={e=>setPw(e.target.value)} style={inputStyle} onKeyDown={e=>e.key==="Enter"&&login()}/>
         {fehler&&<div style={{color:COLORS.red,fontSize:13,padding:"8px 12px",background:"#fee2e2",borderRadius:6}}>{fehler}</div>}
-        <button onClick={login} disabled={laden} style={{...btnPrimary,opacity:laden?.7:1}}>
-          {laden?"Anmelden...":"Anmelden"}
-        </button>
+        <button onClick={login} disabled={laden} style={{...btnPrimary,opacity:laden?.7:1}}>{laden?"Anmelden...":"Anmelden"}</button>
         <div style={{textAlign:"center",color:COLORS.muted,fontSize:12}}>- oder -</div>
         <button onClick={onKundeLogin} style={{...btnSecondary,fontSize:13}}>Als Kunde Daten eintragen</button>
       </div>
@@ -797,6 +860,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
   const gesamt=rechnungen.reduce((s,r)=>s+(r.brutto||0),0);
   const offene=auftraege.filter(a=>["Neu","Genehmigt","In Arbeit"].includes(a.status));
   const fertige=auftraege.filter(a=>a.status==="Fertig");
+  const abgeholt=auftraege.filter(a=>a.status==="Abgeholt");
   return(
     <div>
       <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Guten Tag, {(benutzer&&benutzer.name&&benutzer.name.split(" ")[0])}! 👋</h1>
@@ -845,7 +909,7 @@ function AlleAuftraege({auftraege,kunden,onDetail}){
         <span style={{color:COLORS.muted,fontSize:13}}>{gefiltert.length} Einträge</span>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-        {["alle","Neu","Genehmigt","In Arbeit","Fertig","Abgerechnet"].map(s=>(
+        {["alle","Neu","Genehmigt","In Arbeit","Fertig","Abgerechnet","Abgeholt"].map(s=>(
           <button key={s} onClick={()=>setFilter(s)}
             style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${filter===s?COLORS.accent:COLORS.border}`,
               background:filter===s?`${COLORS.accent}22`:"transparent",color:filter===s?COLORS.accent:COLORS.muted,
@@ -1057,7 +1121,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   const editBrutto=editPositionen.reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0);
   const posKatalog=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(posKatalogSuche.toLowerCase()))})).filter(g=>g.items.length>0);
   const statusFlow=["Neu","Genehmigt","In Arbeit","Fertig"];
-  const istAbgerechnet=auftrag.status==="Abgerechnet";
+  const istAbgerechnet=auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt";
 
   function drucken(){
     const win=window.open("","_blank");
@@ -1085,7 +1149,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnSecondary}>🖨️ Drucken</button>
-          {onLoeschen&&auftrag.status==="Abgerechnet"&&(
+          {onLoeschen&&(auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt")&&(
             <button onClick={()=>{if(confirm("Auftrag silinsin mi?"))onLoeschen(auftrag.id);}}
               style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
           )}
@@ -1112,6 +1176,12 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             })}
             {auftrag.status==="Fertig"&&(
               <button onClick={()=>setZahlungModal(true)} style={{...btnPrimary,marginLeft:16,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
+            )}
+            {auftrag.status==="Abgerechnet"&&(
+              <button onClick={()=>{if(confirm("Bisiklet teslim alındı olarak işaretlensin mi?"))onStatusChange(auftrag.id,"Abgeholt");}}
+                style={{...btnSecondary,marginLeft:16,padding:"6px 18px",fontSize:13,color:"#6b7280",borderColor:"#6b7280"}}>
+                📦 Bisiklet alındı
+              </button>
             )}
           </div>
         </div>
