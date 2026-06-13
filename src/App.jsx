@@ -633,24 +633,24 @@ export default function DrahteselApp() {
     }} onBack={()=>setScreen("login")}/>;
 
   return (
-    <div style={{display:"flex",height:"100vh",background:COLORS.bg,color:COLORS.text,fontFamily:"'IBM Plex Sans',sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{display:"flex",height:"100vh",width:"100vw",maxWidth:"100vw",background:COLORS.bg,color:COLORS.text,fontFamily:"'IBM Plex Sans',sans-serif",position:"relative",overflow:"hidden"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
       {/* Mobile overlay backdrop */}
       {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0008",zIndex:88}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
         onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);}}
         isMobile={isMobile} onClose={()=>setSidebarOffen(false)}/>}
-      {/* Mobilde sidebar kapalıyken hamburger butonu */}
-      {(!sidebarOffen||!isMobile)&&<button onClick={()=>setSidebarOffen(p=>!p)}
+      {/* Hamburger — mobilde sidebar açıkken tamamen gizle */}
+      {!(isMobile&&sidebarOffen)&&<button onClick={()=>setSidebarOffen(p=>!p)}
         style={{position:"fixed",top:12,left:sidebarOffen&&!isMobile?236:12,zIndex:99,
           background:COLORS.accent,border:"none",borderRadius:8,width:36,height:36,
           cursor:"pointer",color:"#fff",fontWeight:"bold",fontSize:18,transition:"left .2s",
           display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px #0004"}}>
-        {sidebarOffen?"✕":"☰"}
+        ☰
       </button>}
       {laden&&<div style={{position:"fixed",top:0,left:0,right:0,height:3,background:COLORS.accent,zIndex:999,animation:"pulse 1s infinite"}}/>}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
-      <main style={{flex:1,overflow:"auto",padding:isMobile?"56px 14px 24px":"56px 28px 24px"}}>
+      <main style={{flex:1,overflow:"auto",overflowX:"hidden",padding:isMobile?"56px 12px 24px":"56px 28px 24px",minWidth:0,maxWidth:"100%"}}>
         {/* BREADCRUMB */}
         {breadcrumb.length>1&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16,flexWrap:"wrap"}}>
@@ -918,7 +918,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
           ⚡ Neuer Auftrag
         </button>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:16,marginBottom:24}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
         {[
           {label:"Aktive Aufträge",wert:offene.length,icon:"🔧",farbe:COLORS.orange,click:()=>setScreen("auftraege")},
           {label:"Fertig (nicht abger.)",wert:fertige.length,icon:"✅",farbe:COLORS.green,click:()=>setScreen("auftraege")},
@@ -1061,7 +1061,7 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
       {/* Fahrrad Annahme */}
       <div style={{background:`${COLORS.orange}15`,border:`1px solid ${COLORS.orange}44`,borderRadius:12,padding:"14px 18px",marginBottom:16}}>
         <div style={{fontWeight:600,color:COLORS.orange,marginBottom:12,fontSize:13,letterSpacing:.5}}>🚲 FAHRRAD-ANNAHME</div>
-        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr 1fr 1fr",gap:12,marginBottom:12}}>
           <div><label style={labelStyle}>Modell / Marke *</label><input placeholder="z.B. PEGASUS Herrenrad" value={form.fahrradModell} onChange={e=>F("fahrradModell",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Farbe</label><input placeholder="z.B. Schwarz" value={form.fahrradFarbe} onChange={e=>F("fahrradFarbe",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Rahmennummer</label><input placeholder="optional" value={form.fahrradNr} onChange={e=>F("fahrradNr",e.target.value)} style={inputStyle}/></div>
@@ -1411,7 +1411,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             <span className="badge" style={{background:st.bg,color:st.farbe,marginTop:6}}>{st.label}</span>
           </div>
         </div>
-        <div className="grid2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+        <div className="grid2" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
           <div className="box" style={{border:"1px solid #ddd",borderRadius:6,padding:14}}>
             <div className="lbl" style={{fontSize:11,color:"#888",fontWeight:600,marginBottom:6}}>KUNDE</div>
             <div style={{fontWeight:600}}>{kunde.vorname} {kunde.nachname}</div>
@@ -1436,7 +1436,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           </div>
         )}
         {(auftrag.kundenbeschwerden||auftrag.diagnose)&&(
-          <div className="grid2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+          <div className="grid2" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
             {auftrag.kundenbeschwerden&&<div style={{border:"1px solid #ddd",borderRadius:6,padding:14}}>
               <div style={{fontSize:11,color:"#888",fontWeight:600,marginBottom:6}}>KUNDENBESCHWERDEN</div>
               <div style={{fontSize:13}}>{auftrag.kundenbeschwerden}</div>
@@ -1450,7 +1450,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         {/* Pozisyon tablosu */}
         {auftrag.positionen&&auftrag.positionen.length>0&&(
           <>
-            <table style={{width:"100%",borderCollapse:"collapse",marginBottom:12}}>
+            <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",minWidth:400,borderCollapse:"collapse",marginBottom:12}}>
               <thead><tr style={{background:"#f5f5f5",fontSize:11}}>
                 <th style={{padding:"8px",textAlign:"left",borderBottom:"2px solid #111"}}>Pos</th>
                 <th style={{padding:"8px",textAlign:"left",borderBottom:"2px solid #111"}}>Beschreibung</th>
@@ -1468,6 +1469,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
                 </tr>
               ))}</tbody>
             </table>
+            </div>
             <div style={{maxWidth:280,marginLeft:"auto"}}>
               <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:13,color:"#555"}}><span>Nettobetrag:</span><span style={{fontFamily:"monospace"}}>{formatEuro(calcNetto(auftrag.brutto||0))}</span></div>
               <div style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:13,color:"#555"}}><span>zzgl. 19% MwSt.:</span><span style={{fontFamily:"monospace"}}>{formatEuro(calcMwst(auftrag.brutto||0))}</span></div>
@@ -1740,7 +1742,7 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
         <InfoKarte titel="Fahrraddaten">
           {bisiklet.farbe&&<InfoZeile label="Farbe" wert={bisiklet.farbe}/>}
           {bisiklet.baujahr&&<InfoZeile label="Baujahr" wert={bisiklet.baujahr}/>}
@@ -1876,7 +1878,7 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
           <button onClick={()=>{if(confirm("Kunde löschen?"))onLoeschen(kunde.id);}} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>Löschen</button>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
         <InfoKarte titel="Kontakt">
           {kunde.email&&<InfoZeile label="E-Mail" wert={kunde.email}/>}
           {kunde.telefon&&<InfoZeile label="Telefon" wert={kunde.telefon}/>}
@@ -2035,7 +2037,7 @@ function NeuKundeForm({onSave,onAbbruch}){
 function KundeFormFelder({form,F}){
   return(<div style={{display:"flex",flexDirection:"column",gap:12,maxWidth:560}}>
     <div style={{color:COLORS.muted,fontSize:12,fontWeight:600,letterSpacing:1}}>PERSÖNLICHE DATEN</div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
       <input placeholder="Vorname *" value={form.vorname} onChange={e=>F("vorname",e.target.value)} style={inputStyle}/>
       <input placeholder="Nachname *" value={form.nachname} onChange={e=>F("nachname",e.target.value)} style={inputStyle}/>
     </div>
@@ -2142,7 +2144,7 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
         ))}
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
         {/* Aylık Umsatz Grafiği */}
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:20}}>
           <div style={{fontWeight:600,marginBottom:16}}>Monatlicher Umsatz (letzte 6 Monate)</div>
@@ -2281,7 +2283,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
           <div style={{fontSize:13,color:"#444"}}>{k.land||"Deutschland"}</div>
         </div>
         {rechnung.fahrradModell&&<div style={{fontWeight:600,marginBottom:12}}>{rechnung.fahrradModell}</div>}
-        <table style={{width:"100%",borderCollapse:"collapse",marginBottom:16}}>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",minWidth:380,borderCollapse:"collapse",marginBottom:16}}>
           <thead><tr style={{background:"#f5f5f5",fontSize:11}}>
             <th style={{padding:"8px",borderBottom:"2px solid #111"}}>Pos</th>
             <th style={{padding:"8px",borderBottom:"2px solid #111"}}>Beschreibung</th>
@@ -2298,7 +2300,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
               <td style={{padding:"8px",textAlign:"right",fontFamily:"monospace",fontWeight:600}}>{formatEuro(p.einzelpreis*p.menge)}</td>
             </tr>
           ))}</tbody>
-        </table>
+        </table></div>
         <div style={{maxWidth:280,marginLeft:"auto"}}>
           {[{l:"Nettobetrag:",w:formatEuro(rechnung.netto||calcNetto(rechnung.brutto||0))},{l:"zzgl. 19% MwSt.:",w:formatEuro(rechnung.mwst||calcMwst(rechnung.brutto||0))}].map(z=>(
             <div key={z.l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:13,color:"#555"}}><span>{z.l}</span><span style={{fontFamily:"monospace"}}>{z.w}</span></div>
@@ -3025,7 +3027,7 @@ function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
         </div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12,marginBottom:16}}>
         <InfoKarte titel="🚲 Bisiklet Bilgileri">
           {item.farbe&&<InfoZeile label="Farbe" wert={item.farbe}/>}
           {item.typ&&<InfoZeile label="Typ" wert={item.typ}/>}
