@@ -206,7 +206,6 @@ const COLORS = {
 };
 const STATUS = {
   "Neu":        {farbe:COLORS.blue,  bg:"#60a5fa22",label:"🆕 Neu"},
-  "Genehmigt":  {farbe:COLORS.orange,bg:"#fb923c22",label:"✅ Genehmigt"},
   "In Arbeit":  {farbe:COLORS.purple,bg:"#a78bfa22",label:"🔧 In Arbeit"},
   "Fertig":     {farbe:COLORS.green, bg:"#4ade8022",label:"✓ Fertig"},
   "Abgerechnet":{farbe:COLORS.accent,bg:"#1a56a022",label:"🧾 Abgerechnet"},
@@ -352,8 +351,6 @@ const LEISTUNGSKATALOG = [
   ]},
 ];
 const WA_TEMPLATES = [
-  {id:"annahme",label:"📥 Bisiklet alındı",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wurde bei uns aufgenommen. Auftrag #${(a&&a.nummer)||""}. Wir melden uns, sobald es fertig ist. – Drahtesel Plus`},
-  {id:"beginn",label:"🔧 İş başladı",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Wir haben mit der Reparatur Ihres Fahrrads (${(a&&a.fahrradModell)||""}) begonnen. Voraussichtliche Fertigstellung: ${(a&&a.voraussichtlichFertig)||"in Kürze"}. – Drahtesel Plus`},
   {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) ist fertig und kann abgeholt werden. Gesamtbetrag: ${formatEuro((a&&a.brutto)||0)}. Wir freuen uns auf Ihren Besuch! – Drahtesel Plus`},
   {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
   {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Unser Kostenvoranschlag für Ihr Fahrrad (${(a&&a.fahrradModell)||""}): ca. ${formatEuro((a&&a.brutto)||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
@@ -903,7 +900,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}
 }
 function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
   const gesamt=rechnungen.reduce((s,r)=>s+(r.brutto||0),0);
-  const offene=auftraege.filter(a=>["Neu","Genehmigt","In Arbeit"].includes(a.status));
+  const offene=auftraege.filter(a=>["Neu","In Arbeit"].includes(a.status));
   const fertige=auftraege.filter(a=>a.status==="Fertig");
   const abgeholt=auftraege.filter(a=>a.status==="Abgeholt");
   return(
@@ -974,7 +971,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
         </div>
       )}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
-        {["alle","Neu","Genehmigt","In Arbeit","Fertig","Abgerechnet","Abgeholt"].map(s=>(
+        {["alle","Neu","In Arbeit","Fertig","Abgerechnet","Abgeholt"].map(s=>(
           <button key={s} onClick={()=>setFilter(s)}
             style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${filter===s?COLORS.accent:COLORS.border}`,
               background:filter===s?`${COLORS.accent}22`:"transparent",color:filter===s?COLORS.accent:COLORS.muted,
@@ -1195,7 +1192,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   function delPosEdit(id){setEditPositionen(p=>p.filter(x=>x.id!==id));}
   const editBrutto=editPositionen.reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0);
   const posKatalog=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(posKatalogSuche.toLowerCase()))})).filter(g=>g.items.length>0);
-  const statusFlow=["Neu","Genehmigt","In Arbeit","Fertig","Abgerechnet","Abgeholt"];
+  const statusFlow=["Neu","In Arbeit","Fertig","Abgerechnet","Abgeholt"];
   const istAbgerechnet=auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt";
 
   function drucken(){
