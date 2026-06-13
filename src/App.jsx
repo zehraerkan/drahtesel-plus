@@ -1230,44 +1230,37 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       </div>
 
       {/* STATUS FLOW */}
-      {!istAbgerechnet&&(
-        <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16}}>
-          <div style={{fontWeight:600,marginBottom:12,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>STATUS</div>
-          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-            {statusFlow.map((s,i)=>{
-              const isAktiv=auftrag.status===s;
-              const currentIdx=statusFlow.indexOf(auftrag.status);
-              const isErreicht=currentIdx>=i;
-              const sCol=STATUS[s];
-              // Abgerechnet'e manuel tıklanamaz (sadece Rechnung oluşturma ile geçilir)
-              const clickable=s!=="Abgerechnet";
-              return(<div key={s} style={{display:"flex",alignItems:"center",gap:8}}>
-                <button
-                  onClick={()=>clickable&&onStatusChange(auftrag.id,s)}
-                  style={{padding:"6px 16px",borderRadius:20,
-                    border:`2px solid ${isAktiv?sCol.farbe:isErreicht?sCol.farbe+"66":COLORS.border}`,
-                    background:isAktiv?sCol.bg:"transparent",
-                    color:isAktiv?sCol.farbe:isErreicht?sCol.farbe+"88":COLORS.muted,
-                    cursor:clickable?"pointer":"default",
-                    fontSize:12,fontWeight:isAktiv?700:500,transition:"all .15s",
-                    opacity:!clickable&&!isAktiv&&!isErreicht?.5:1}}>
-                  {sCol.label}
-                </button>
-                {i<statusFlow.length-1&&<span style={{color:COLORS.border}}>→</span>}
-              </div>);
-            })}
-            {auftrag.status==="Fertig"&&(
-              <button onClick={()=>setZahlungModal(true)} style={{...btnPrimary,marginLeft:16,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
-            )}
-          </div>
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16}}>
+        <div style={{fontWeight:600,marginBottom:12,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>STATUS</div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          {statusFlow.map((s,i)=>{
+            const isAktiv=auftrag.status===s;
+            const currentIdx=statusFlow.indexOf(auftrag.status);
+            const isErreicht=currentIdx>=i;
+            const sCol=STATUS[s];
+            // Abgerechnet'e manuel tıklanamaz
+            const clickable=s!=="Abgerechnet";
+            // Abgerechnet veya Abgeholt durumunda sadece ilgili butonlar görünsün
+            if(istAbgerechnet&&s!=="Abgerechnet"&&s!=="Abgeholt") return null;
+            return(<div key={s} style={{display:"flex",alignItems:"center",gap:8}}>
+              <button
+                onClick={()=>clickable&&onStatusChange(auftrag.id,s)}
+                style={{padding:"6px 16px",borderRadius:20,
+                  border:`2px solid ${isAktiv?sCol.farbe:isErreicht?sCol.farbe+"66":COLORS.border}`,
+                  background:isAktiv?sCol.bg:"transparent",
+                  color:isAktiv?sCol.farbe:isErreicht?sCol.farbe+"88":COLORS.muted,
+                  cursor:clickable?"pointer":"default",
+                  fontSize:12,fontWeight:isAktiv?700:500,transition:"all .15s"}}>
+                {sCol.label}
+              </button>
+              {!istAbgerechnet&&i<statusFlow.length-1&&<span style={{color:COLORS.border}}>→</span>}
+            </div>);
+          })}
+          {auftrag.status==="Fertig"&&(
+            <button onClick={()=>setZahlungModal(true)} style={{...btnPrimary,marginLeft:8,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
+          )}
         </div>
-      )}
-      {istAbgerechnet&&(
-        <div style={{background:`${COLORS.accent}18`,border:`1px solid ${COLORS.accent}44`,borderRadius:12,padding:"12px 18px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
-          <span style={{color:COLORS.accent,fontSize:18}}>✓</span>
-          <span style={{color:COLORS.accent,fontWeight:600}}>Abgerechnet — Rechnung wurde erstellt</span>
-        </div>
-      )}
+      </div>
 
       {/* WHATSAPP ŞABLONLARI */}
       {!!((kunde&&kunde.whatsapp)||(kunde&&kunde.telefon)||(kunde&&kunde.email))&&(
