@@ -410,6 +410,13 @@ export default function DrahteselApp() {
   const [selAuftrag,setSelAuftrag]=useState(null);
   const [selRechnung,setSelRechnung]=useState(null);
   const [prevScreen,setPrevScreen]=useState("auftraege");
+  const [breadcrumb,setBreadcrumb]=useState([]);
+
+  function navTo(screen, label, resetBreadcrumb=false){
+    if(resetBreadcrumb){setBreadcrumb([{screen,label}]);}
+    else{setBreadcrumb(p=>[...p.filter(b=>b.screen!==screen),{screen,label}]);}
+    setScreen(screen);
+  }
   const [toast,setToast]=useState(null);
   const [sidebarOffen,setSidebarOffen]=useState(!isMobile);
   const [laden,setLaden]=useState(false);
@@ -632,16 +639,41 @@ export default function DrahteselApp() {
       {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0008",zIndex:88}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
         onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);}}
-        isMobile={isMobile}/>}
-      <button onClick={()=>setSidebarOffen(p=>!p)} style={{position:"fixed",top:12,left:sidebarOffen&&!isMobile?236:12,zIndex:99,background:COLORS.accent,border:"none",borderRadius:8,width:36,height:36,cursor:"pointer",color:"#000",fontWeight:"bold",fontSize:18,transition:"left .2s",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px #0006"}}>
+        isMobile={isMobile} onClose={()=>setSidebarOffen(false)}/>}
+      {/* Mobilde sidebar kapalıyken hamburger butonu */}
+      {(!sidebarOffen||!isMobile)&&<button onClick={()=>setSidebarOffen(p=>!p)}
+        style={{position:"fixed",top:12,left:sidebarOffen&&!isMobile?236:12,zIndex:99,
+          background:COLORS.accent,border:"none",borderRadius:8,width:36,height:36,
+          cursor:"pointer",color:"#fff",fontWeight:"bold",fontSize:18,transition:"left .2s",
+          display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px #0004"}}>
         {sidebarOffen?"✕":"☰"}
-      </button>
+      </button>}
       {laden&&<div style={{position:"fixed",top:0,left:0,right:0,height:3,background:COLORS.accent,zIndex:999,animation:"pulse 1s infinite"}}/>}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
-      <main style={{flex:1,overflow:"auto",padding:isMobile?"60px 16px 24px":"60px 32px 24px"}}>
+      <main style={{flex:1,overflow:"auto",padding:isMobile?"56px 14px 24px":"56px 28px 24px"}}>
+        {/* BREADCRUMB */}
+        {breadcrumb.length>1&&(
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+            {breadcrumb.map((b,i)=>(
+              <span key={b.screen} style={{display:"flex",alignItems:"center",gap:6}}>
+                {i<breadcrumb.length-1?(
+                  <button onClick={()=>setScreen(b.screen)}
+                    style={{background:"transparent",border:"none",color:COLORS.accent,cursor:"pointer",
+                      fontSize:13,padding:0,textDecoration:"underline",textUnderlineOffset:3}}>
+                    {b.label}
+                  </button>
+                ):(
+                  <span style={{color:COLORS.muted,fontSize:13,fontWeight:600}}>{b.label}</span>
+                )}
+                {i<breadcrumb.length-1&&<span style={{color:COLORS.border,fontSize:12}}>›</span>}
+              </span>
+            ))}
+          </div>
+        )}
         {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
-          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setPrevScreen("auftraege");setScreen("auftrag-detail");}}/>}
+          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setPrevScreen("auftraege");setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${a.nummer}`}]);setScreen("auftrag-detail");}}
+          onKundeDetail={(k)=>{if(k){setSelKunde(k);setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"kunde-detail",label:`${k.nachname}, ${k.vorname}`}]);setScreen("kunde-detail");}}}/>}
         {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege} bisikletler={bisikletler}
           onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}/>}
         {screen==="kunde-detail"&&selKunde&&<KundeDetail
@@ -727,6 +759,13 @@ export default function DrahteselApp() {
           onSil={async(id)=>{try{await envanterLoeschen(id);showToast("Silindi.");}catch(err){showToast("Hata","err");}}}
         />}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden}/>}
+        {screen==="neu-auftrag-quick"&&<QuickAuftragScreen
+          kunden={kunden}
+          bisikletler={bisikletler}
+          auftragNr={naechsteNr(auftraege,"nummer",1000)}
+          onKundeWaehle={(k)=>{setSelKunde(k);setSelBisiklet(null);setScreen("neu-auftrag");}}
+          onNeuKunde={()=>setScreen("neu-kunde")}
+          onAbbruch={()=>setScreen("dashboard")}/>}
         {screen==="einstellungen"&&<EinstellungenScreen benutzer={benutzer} benutzerListe={benutzerListe} setBenutzerListe={setBenutzerListe} showToast={showToast}/>}
       </main>
       {toast&&<Toast msg={toast.msg} art={toast.art}/>}
@@ -820,7 +859,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
     </div>
   );
 }
-function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile}){
+function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}){
   const offene=auftraege.filter(a=>a.status!=="Abgerechnet").length;
   const nav=[
     {id:"dashboard",label:"Dashboard",icon:"⊞"},
@@ -833,8 +872,14 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile}){
     {id:"einstellungen",label:"Einstellungen",icon:"⚙"},
   ];
   return(
-    <aside style={{width:220,background:COLORS.surface,borderRight:`1px solid ${COLORS.border}`,display:"flex",flexDirection:"column",padding:"24px 0",flexShrink:0,position:isMobile?"fixed":"relative",top:0,left:0,height:"100vh",zIndex:isMobile?89:1}}>
-      <div style={{padding:"0 20px 24px",borderBottom:`1px solid ${COLORS.border}`}}>
+    <aside style={{width:220,background:COLORS.surface,borderRight:`1px solid ${COLORS.border}`,display:"flex",flexDirection:"column",padding:"24px 0",flexShrink:0,position:isMobile?"fixed":"relative",top:0,left:0,height:"100vh",zIndex:isMobile?89:1,overflowY:"auto"}}>
+      <div style={{padding:"0 20px 24px",borderBottom:`1px solid ${COLORS.border}`,position:"relative"}}>
+        {isMobile&&<button onClick={()=>setSidebarOffen(false)}
+          style={{position:"absolute",top:0,right:12,background:"transparent",border:"none",
+            color:COLORS.muted,fontSize:22,cursor:"pointer",padding:"4px 8px",lineHeight:1}}>✕</button>}
+        {isMobile&&<button onClick={onClose}
+          style={{position:"absolute",top:8,right:12,background:"transparent",border:"none",
+            color:COLORS.muted,fontSize:24,cursor:"pointer",lineHeight:1,padding:"2px 6px"}}>✕</button>}
         <img src={LOGO_SRC} alt="" style={{width:44,height:44,objectFit:"contain",marginBottom:4}}/>
         <div style={{fontWeight:700,color:COLORS.accent,fontSize:15,letterSpacing:1}}>DRAHTESEL+</div>
         <div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{(benutzer&&benutzer.name)}</div>
@@ -863,8 +908,16 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
   const abgeholt=auftraege.filter(a=>a.status==="Abgeholt");
   return(
     <div>
-      <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Guten Tag, {(benutzer&&benutzer.name&&benutzer.name.split(" ")[0])}! 👋</h1>
-      <p style={{color:COLORS.muted,marginBottom:24,fontSize:14}}>Werkstatt-Übersicht · Daten aus der Cloud ☁️ · <span style={{color:"#92400e",fontSize:12}}>🔒 DSGVO-konform · EU-Server Frankfurt</span></p>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:700,marginBottom:4}}>Guten Tag, {(benutzer&&benutzer.name&&benutzer.name.split(" ")[0])}! 👋</h1>
+          <p style={{color:COLORS.muted,fontSize:13,margin:0}}>Werkstatt-Übersicht · <span style={{color:"#92400e",fontSize:12}}>🔒 DSGVO-konform · EU-Server Frankfurt</span></p>
+        </div>
+        <button onClick={()=>setScreen("neu-auftrag-quick")}
+          style={{...btnPrimary,display:"flex",alignItems:"center",gap:8,fontSize:14,padding:"10px 20px"}}>
+          ⚡ Neuer Auftrag
+        </button>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:16,marginBottom:24}}>
         {[
           {label:"Aktive Aufträge",wert:offene.length,icon:"🔧",farbe:COLORS.orange,click:()=>setScreen("auftraege")},
@@ -899,15 +952,27 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
     </div>
   );
 }
-function AlleAuftraege({auftraege,kunden,onDetail}){
+function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
   const [filter,setFilter]=useState("alle");
   const gefiltert=[...auftraege].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).filter(a=>filter==="alle"||a.status===filter);
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
         <h2 style={{fontSize:20,fontWeight:700}}>Arbeitsaufträge</h2>
         <span style={{color:COLORS.muted,fontSize:13}}>{gefiltert.length} Einträge</span>
       </div>
+      {auftraege.filter(a=>a.status==="Fertig").length>0&&filter==="alle"&&(
+        <div style={{background:`${COLORS.green}18`,border:`1px solid ${COLORS.green}44`,borderRadius:10,padding:"10px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>✓</span>
+          <span style={{color:COLORS.green,fontWeight:600,fontSize:13}}>
+            {auftraege.filter(a=>a.status==="Fertig").length} Auftrag wartet auf Abrechnung
+          </span>
+          <button onClick={()=>setFilter("Fertig")}
+            style={{marginLeft:"auto",...btnSecondary,fontSize:12,padding:"4px 12px",color:COLORS.green,borderColor:COLORS.green}}>
+            Anzeigen →
+          </button>
+        </div>
+      )}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         {["alle","Neu","Genehmigt","In Arbeit","Fertig","Abgerechnet","Abgeholt"].map(s=>(
           <button key={s} onClick={()=>setFilter(s)}
@@ -922,12 +987,22 @@ function AlleAuftraege({auftraege,kunden,onDetail}){
         {gefiltert.map(a=>{
           const st=STATUS[a.status]||STATUS["Neu"];
           return(
-            <div key={a.id} onClick={()=>onDetail(a)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
+            <div key={a.id} onClick={()=>onDetail(a)}
+              style={{background:COLORS.card,
+                border:`2px solid ${a.status==="Fertig"?COLORS.green:a.status==="Abgerechnet"?COLORS.accent+"66":COLORS.border}`,
+                borderRadius:10,padding:"14px 18px",cursor:"pointer",
+                display:"flex",justifyContent:"space-between",alignItems:"center",
+                boxShadow:a.status==="Fertig"?`0 0 0 1px ${COLORS.green}22`:"none"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=a.status==="Fertig"?COLORS.green:a.status==="Abgerechnet"?COLORS.accent+"66":COLORS.border}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                   <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:12}}>#{a.nummer}</span>
                   <span style={{fontWeight:600}}>{a.kundeNachname}, {a.kundeVorname}</span>
+                  {onKundeDetail&&<button onClick={e=>{e.stopPropagation();onKundeDetail(kunden.find(k=>k.id===a.kundeId));}}
+                    style={{background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:11,padding:"1px 6px",borderRadius:4,textDecoration:"underline"}}>
+                    👤
+                  </button>}
                 </div>
                 <div style={{color:COLORS.muted,fontSize:12}}>{a.fahrradModell} · {a.erstellt}</div>
                 {a.kundenbeschwerden&&<div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{a.kundenbeschwerden.slice(0,70)}{a.kundenbeschwerden.length>70?"…":""}</div>}
@@ -2978,6 +3053,68 @@ function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
           <p style={{color:COLORS.muted,fontSize:13,margin:0,whiteSpace:"pre-wrap"}}>{item.notizen}</p>
         </InfoKarte>
       )}
+    </div>
+  );
+}
+
+// ─── QUICK AUFTRAG SCREEN ─────────────────────────────────────────────────────
+function QuickAuftragScreen({kunden,bisikletler,onKundeWaehle,onNeuKunde,onAbbruch}){
+  const [suche,setSuche]=useState("");
+  const gefiltert=[...kunden]
+    .sort((a,b)=>(parseInt(b.kdNr)||0)-(parseInt(a.kdNr)||0))
+    .filter(k=>`${k.vorname} ${k.nachname} ${k.telefon||""} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()));
+
+  return(
+    <div style={{maxWidth:560}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <h2 style={{fontSize:20,fontWeight:700}}>⚡ Neuer Auftrag</h2>
+        <button onClick={onAbbruch} style={btnSecondary}>✕</button>
+      </div>
+      <p style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Zuerst Kunden auswählen oder neu anlegen.</p>
+
+      <div style={{position:"relative",marginBottom:12}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <input autoFocus placeholder="Name oder Kundennr. suchen …" value={suche} onChange={e=>setSuche(e.target.value)}
+          style={{...inputStyle,paddingLeft:42,boxSizing:"border-box"}}/>
+        {suche&&<button onClick={()=>setSuche("")}
+          style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
+      </div>
+
+      <button onClick={onNeuKunde}
+        style={{...btnSecondary,width:"100%",marginBottom:16,color:COLORS.accent,borderColor:COLORS.accent,borderStyle:"dashed",padding:"12px"}}>
+        + Neuen Kunden anlegen
+      </button>
+
+      <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:"60vh",overflowY:"auto"}}>
+        {gefiltert.map(k=>{
+          const kBisikletler=(bisikletler||[]).filter(b=>b.kundeId===k.id);
+          const initials=((k.vorname||"?")[0]+(k.nachname||" ")[0]).toUpperCase();
+          return(
+            <div key={k.id} onClick={()=>onKundeWaehle(k)}
+              style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,
+                padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=COLORS.accent;e.currentTarget.style.background="#ddeef9";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=COLORS.border;e.currentTarget.style.background=COLORS.card;}}>
+              <div style={{width:38,height:38,borderRadius:"50%",background:COLORS.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"#fff",flexShrink:0}}>
+                {initials}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:14}}>{k.nachname}, {k.vorname}</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:2}}>
+                  {k.telefon&&<span style={{color:COLORS.muted,fontSize:12}}>📞 {k.telefon}</span>}
+                  {kBisikletler.map(b=>(
+                    <span key={b.id} style={{background:`${COLORS.teal}22`,color:COLORS.teal,borderRadius:10,padding:"1px 8px",fontSize:11}}>
+                      🚲 {b.marke} {b.modell}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <span style={{color:COLORS.accent,fontSize:11,fontFamily:"'IBM Plex Mono'",fontWeight:600,flexShrink:0}}>#{k.kdNr}</span>
+            </div>
+          );
+        })}
+        {!gefiltert.length&&<div style={{textAlign:"center",padding:32,color:COLORS.muted}}>Kein Kunde gefunden.</div>}
+      </div>
     </div>
   );
 }
