@@ -455,6 +455,18 @@ export default function DrahteselApp() {
 
   useEffect(()=>{ ladeBenutzer(); },[ladeBenutzer]);
 
+  // Tab geri gelince token yenile
+  useEffect(()=>{
+    async function onVisible(){
+      if(!document.hidden&&_authToken){
+        const ok=await supaRefreshAccessToken();
+        if(!ok){await supaSignOut();window.location.reload();}
+      }
+    }
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>document.removeEventListener("visibilitychange",onVisible);
+  },[]);
+
   useEffect(()=>{
     if(startScreen==="kunde-selbst"){setAuthChecking(false);return;}
     async function checkAuth(){
@@ -492,6 +504,9 @@ export default function DrahteselApp() {
       setRechnungen(rR.map(rowToRechnung));
       setEnvanter(eR.map(rowToEnvanter));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
+      // selAuftrag stale veriyi güncelle
+      const neueAuftraege=aR.map(rowToAuftrag);
+      setSelAuftrag(prev=>prev?neueAuftraege.find(a=>a.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
     finally { setLaden(false); }
   }, [benutzer]);
@@ -568,7 +583,7 @@ export default function DrahteselApp() {
   async function auftragNotizenAendern(id,notizen) {
     const a=auftraege.find(x=>x.id===id); if(!a)return;
     const {id:_,kundeId,bisikletId,status,erstellt,...data}=a;
-    try{await dbUpdate("auftraege",id,{data:{...data,notizen}});}catch(e){console.warn("Notizen update failed",e);}
+    try{await dbUpdate("auftraege",id,{data:{...data,notizen}});}catch(e){console.warn("Notizen:",e.message);}
     setAuftraege(p=>p.map(x=>x.id===id?{...x,notizen}:x));
     setSelAuftrag(p=>p?{...p,notizen}:p);
   }
@@ -734,7 +749,7 @@ export default function DrahteselApp() {
               const k=selKunde;
               const neu=await auftragHinzufuegen(
                 {...a,kundeVorname:k.vorname,kundeNachname:k.nachname,kundeKdNr:k.kdNr},
-                k.id, (selBisiklet&&selBisiklet.id)||a.bisikletId||null
+                k.id, a.bisikletId||(selBisiklet&&selBisiklet.kundeId===k.id&&selBisiklet.id)||null
               );
               showToast("Arbeitsauftrag erstellt!");setSelAuftrag(neu);setScreen("auftrag-detail");
             }catch(e){showToast("Fehler: "+e.message,"err");}
@@ -751,7 +766,7 @@ export default function DrahteselApp() {
           onRechnungErstellen={async(a)=>{
             try{
               const k=kunden.find(x=>x.id===a.kundeId)||{};
-              const nr=naechsteNr(rechnungen,"nummer",40);
+              const nr=naechsteNr(rechnungen,"nummer",1);
               const neu=await rechnungHinzufuegen({
                 nummer:nr,kundeId:a.kundeId,auftragId:a.id,
                 positionen:a.positionen,brutto:a.brutto,netto:calcNetto(a.brutto),
@@ -1056,7 +1071,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
             </div>
           );
         })}
-        {!gefiltert.length&&auftraege.length===0&&[1,2,3,4].map(i=><SkeletonCard key={i} height={72}/>)}
+        {!gefiltert.length&&auftraege.length===0&&[1,2,3,4].map(i=><SkeletonCard key={"sk-a"+i} height={72}/>)}
         {!gefiltert.length&&auftraege.length>0&&<div style={{color:COLORS.muted,textAlign:"center",padding:40}}>Keine Aufträge gefunden.</div>}
       </div>
     </div>
@@ -1888,7 +1903,7 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
             <div style={{fontSize:36,marginBottom:10}}>👥</div>
             <div style={{fontSize:14}}>{suche?"Keine Kunden gefunden.":"Noch keine Kunden angelegt."}</div>
             {!suche&&<button onClick={onNeu} style={{...btnPrimary,marginTop:16}}>+ Ersten Kunden anlegen</button>}
-          {!gefiltert.length&&kunden.length===0&&suche===""&&[1,2,3].map(i=><SkeletonCard key={i} height={64}/>)}
+          {!gefiltert.length&&kunden.length===0&&suche===""&&[1,2,3].map(i=><SkeletonCard key={"sk-k"+i} height={64}/>)}
           </div>
         )}
       </div>
@@ -2469,7 +2484,7 @@ function KatalogScreen(){
           <div>
             <label style={labelStyle}>Gruppe</label>
             <select value={neuItem.gruppeIdx} onChange={e=>setNeuItem(p=>({...p,gruppeIdx:parseInt(e.target.value)}))} style={inputStyle}>
-              {katalog.map((g,i)=><option key={i} value={i}>{g.gruppe}</option>)}
+              {katalog.map((g,i)=><option key={"grp-"+i} value={i}>{g.gruppe}</option>)}
             </select>
           </div>
           <div>
@@ -2633,7 +2648,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
             const yeniK={id:genId(),name:neuName.trim(),passwort:neuPw.trim(),rolle:neuRolle};
             dbInsert("benutzer",{id:yeniK.id,data:yeniK})
               .then(()=>showToast(`"${yeniK.name}" Supabase'e kaydedildi ✓`))
-              .catch(e=>{console.warn("Supabase hata:",e);showToast("Supabase'e kaydedilemedi, sadece lokal!","err");});
+              .catch(()=>showToast("Supabase'e kaydedilemedi, sadece lokal!","err"));
             setBenutzerListe(p=>{
               const yeni=[...p,yeniK];
               try{localStorage.setItem("dp_users",JSON.stringify(yeni));}catch{}
