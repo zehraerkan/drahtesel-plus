@@ -639,19 +639,21 @@ export default function DrahteselApp() {
     }} onBack={()=>setScreen("login")}/>;
 
   return (
-    <div style={{display:"flex",height:"100vh",width:"100vw",maxWidth:"100vw",background:COLORS.bg,color:COLORS.text,fontFamily:"'IBM Plex Sans',sans-serif",position:"relative",overflow:"hidden"}}>
+    <div style={{display:"flex",height:"100vh",background:COLORS.bg,color:COLORS.text,fontFamily:"'IBM Plex Sans',sans-serif",position:"relative",overflow:"hidden",maxWidth:"100vw",width:"100%"}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
+      <style>{`*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}body,html{overflow-x:hidden;max-width:100vw;}img{max-width:100%;}`}</style>
       {/* Mobile overlay backdrop */}
-      {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0008",zIndex:88}}/>}
+      {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0006",zIndex:88,backdropFilter:"blur(2px)"}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
         onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);}}
         isMobile={isMobile} onClose={()=>setSidebarOffen(false)}/>}
-      {/* Hamburger — mobilde sidebar açıkken tamamen gizle */}
-      {!(isMobile&&sidebarOffen)&&<button onClick={()=>setSidebarOffen(p=>!p)}
-        style={{position:"fixed",top:12,left:sidebarOffen&&!isMobile?236:12,zIndex:99,
+      {/* Hamburger — sadece sidebar kapalıyken göster */}
+      {!sidebarOffen&&<button onClick={()=>setSidebarOffen(true)}
+        style={{position:"fixed",top:12,left:12,zIndex:99,
           background:COLORS.accent,border:"none",borderRadius:8,width:36,height:36,
-          cursor:"pointer",color:"#fff",fontWeight:"bold",fontSize:18,transition:"left .2s",
-          display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px #0004"}}>
+          cursor:"pointer",color:"#fff",fontSize:20,
+          display:"flex",alignItems:"center",justifyContent:"center",
+          boxShadow:"0 2px 8px #0003"}}>
         ☰
       </button>}
       {laden&&<div style={{position:"fixed",top:0,left:0,right:0,height:3,background:COLORS.accent,zIndex:999,animation:"pulse 1s infinite"}}/>}
@@ -661,7 +663,12 @@ export default function DrahteselApp() {
         </div>
       )}
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}} @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}`}</style>
-      <main style={{flex:1,overflow:"auto",overflowX:"hidden",padding:isMobile?"56px 12px 24px":"56px 28px 24px",minWidth:0,maxWidth:"100%"}}>
+      <main style={{flex:1,overflow:"auto",overflowX:"hidden",
+        padding:isMobile?"56px 12px 24px":"56px 28px 24px",
+        marginLeft:sidebarOffen&&!isMobile?220:0,
+        transition:"margin-left .2s",
+        minWidth:0,maxWidth:"100%",
+        boxSizing:"border-box"}}>
         {/* BREADCRUMB */}
         {breadcrumb.length>1&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16,flexWrap:"wrap"}}>
@@ -815,7 +822,7 @@ function LoginScreen({onLogin,onKundeLogin}){
         <div style={{fontWeight:700,fontSize:26,color:COLORS.accent,letterSpacing:2}}>DRAHTESEL PLUS</div>
         <div style={{color:COLORS.muted,fontSize:12,letterSpacing:3,marginTop:4}}>WERKSTATT VERWALTUNG</div>
       </div>
-      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"36px 40px",width:340,display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:360,display:"flex",flexDirection:"column",gap:16}}>
         <div style={{color:COLORS.muted,fontSize:13,fontWeight:600,letterSpacing:1}}>MITARBEITER LOGIN</div>
         <input placeholder="E-Mail Adresse" type="email" value={email} onChange={e=>setEmail(e.target.value)} style={inputStyle} onKeyDown={e=>e.key==="Enter"&&login()}/>
         <input placeholder="Passwort" type="password" value={pw} onChange={e=>setPw(e.target.value)} style={inputStyle} onKeyDown={e=>e.key==="Enter"&&login()}/>
@@ -834,7 +841,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
   return(
     <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
-      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"36px 40px",width:"100%",maxWidth:480}}>
+      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"24px 20px",width:"100%",maxWidth:480,boxSizing:"border-box"}}>
         <img src={LOGO_SRC} alt="" style={{width:60,height:60,objectFit:"contain"}}/>
         <div style={{fontWeight:700,fontSize:20,color:COLORS.accent,margin:"8px 0 4px"}}>Drahtesel Plus</div>
         <div style={{color:COLORS.muted,fontSize:13,marginBottom:24}}>Bitte tragen Sie Ihre Kontaktdaten ein.</div>
@@ -893,7 +900,20 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}
     {id:"einstellungen",label:"Einstellungen",icon:"⚙"},
   ];
   return(
-    <aside style={{width:220,background:COLORS.surface,borderRight:`1px solid ${COLORS.border}`,display:"flex",flexDirection:"column",padding:"24px 0",flexShrink:0,position:isMobile?"fixed":"relative",top:0,left:0,height:"100vh",zIndex:isMobile?89:1,overflowY:"auto"}}>
+    <aside style={{
+        width:isMobile?Math.min(260,window.innerWidth*0.75):220,
+        background:COLORS.surface,
+        borderRight:`1px solid ${COLORS.border}`,
+        display:"flex",flexDirection:"column",
+        padding:"24px 0",
+        flexShrink:0,
+        position:"fixed",
+        top:0,left:0,
+        height:"100vh",
+        zIndex:89,
+        overflowY:"auto",
+        boxShadow:isMobile?"4px 0 20px #0003":"none"
+      }}>
       <div style={{padding:"0 20px 24px",borderBottom:`1px solid ${COLORS.border}`,position:"relative"}}>
         {isMobile&&<button onClick={()=>setSidebarOffen(false)}
           style={{position:"absolute",top:0,right:12,background:"transparent",border:"none",
@@ -1061,7 +1081,7 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
   const brutto=form.positionen.reduce((s,p)=>s+p.einzelpreis*p.menge,0);
   const gKatalog=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(katalogSuche.toLowerCase()))})).filter(g=>g.items.length>0);
   return(
-    <div style={{maxWidth:740}}>
+    <div style={{maxWidth:"100%"}}>
       <h2 style={{marginBottom:4}}>Neuer Arbeitsauftrag</h2>
       <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Für: {kunde.vorname} {kunde.nachname}</div>
 
@@ -1088,7 +1108,7 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
           <div><label style={labelStyle}>Farbe</label><input placeholder="z.B. Schwarz" value={form.fahrradFarbe} onChange={e=>F("fahrradFarbe",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Rahmennummer</label><input placeholder="optional" value={form.fahrradNr} onChange={e=>F("fahrradNr",e.target.value)} style={inputStyle}/></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:12}}>
           <div><label style={labelStyle}>Auftragsnummer</label><input value={`#${auftragNr}`} readOnly style={{...inputStyle,opacity:.7}}/></div>
           <div><label style={labelStyle}>Annahmedatum</label><input value={form.annahmeDatum} readOnly style={{...inputStyle,opacity:.7}}/></div>
           <div><label style={labelStyle}>Voraussichtlich fertig</label><input placeholder="z.B. 25.04.2026" value={form.voraussichtlichFertig} onChange={e=>F("voraussichtlichFertig",e.target.value)} style={inputStyle}/></div>
@@ -1226,7 +1246,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
     <style>body{font-family:sans-serif;margin:0;padding:32px;font-size:13px;color:#111;}
     table{width:100%;border-collapse:collapse;}th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #eee;}
     th{background:#f5f5f5;font-weight:600;font-size:11px;}
-    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+    .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;}
     .box{border:1px solid #ddd;border-radius:6px;padding:14px;}
     .lbl{font-size:11px;color:#888;font-weight:600;letter-spacing:.5px;margin-bottom:6px;}
     .kopf{display:flex;justify-content:space-between;margin-bottom:28px;align-items:flex-start;}
@@ -1352,7 +1372,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             /* DÜZENLEME MODU */
             <div>
               <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,overflow:"hidden",marginBottom:10}}>
-                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 80px 36px",padding:"6px 12px",background:COLORS.bg,fontSize:11,color:COLORS.muted,fontWeight:600,letterSpacing:.5}}>
+                <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 70px 32px",padding:"6px 10px",background:COLORS.bg,fontSize:11,color:COLORS.muted,fontWeight:600,letterSpacing:.5}}>
                   <span>BESCHREIBUNG</span><span>EINZELPREIS</span><span>MENGE</span><span></span>
                 </div>
                 {editPositionen.map((p,i)=>(
@@ -1411,7 +1431,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       )}
 
       {/* DRUCKBARER BEREICH */}
-      <div ref={printRef} style={{background:"white",color:"#111",padding:36,borderRadius:12,fontFamily:"sans-serif"}}>
+      <div ref={printRef} style={{background:"white",color:"#111",padding:isMobile?16:36,borderRadius:12,fontFamily:"sans-serif",overflowX:"auto"}}>
         <div className="kopf" style={{display:"flex",justifyContent:"space-between",marginBottom:24,alignItems:"flex-start"}}>
           <div className="logo-row" style={{display:"flex",alignItems:"center",gap:10}}>
             <img src={LOGO_SRC} alt="" style={{width:48,height:48,objectFit:"contain"}}/>
@@ -1650,7 +1670,7 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
   const [tempId]=useState(()=>genId());
 
   return(
-    <div style={{maxWidth:560}}>
+    <div style={{maxWidth:"100%"}}>
       <h2 style={{marginBottom:4}}>Neues Fahrrad</h2>
       <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Für: {kunde.vorname} {kunde.nachname}</div>
 
@@ -1661,7 +1681,7 @@ function NeuBisikletForm({kunde,onSave,onAbbruch}){
           <div><label style={labelStyle}>Marke</label><input placeholder="z.B. PEGASUS, Trek" value={form.marke} onChange={e=>F("marke",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Modell</label><input placeholder="z.B. Solero, FX3" value={form.modell} onChange={e=>F("modell",e.target.value)} style={inputStyle}/></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:12}}>
           <div><label style={labelStyle}>Farbe</label><input placeholder="z.B. Schwarz" value={form.farbe} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Baujahr</label><input placeholder="z.B. 2018" value={form.baujahr} onChange={e=>F("baujahr",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Typ</label>
@@ -1727,7 +1747,7 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
   const [form,setForm]=useState({...bisiklet});
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
   if(edit) return(
-    <div style={{maxWidth:560}}>
+    <div style={{maxWidth:"100%"}}>
       <h2 style={{marginBottom:20}}>Fahrrad bearbeiten</h2>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
         <div><label style={labelStyle}>Marke</label><input value={form.marke||""} onChange={e=>F("marke",e.target.value)} style={inputStyle}/></div>
@@ -1840,11 +1860,14 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
                 <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>{k.nachname}, {k.vorname}</div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
                   {k.telefon&&<span style={{color:COLORS.muted,fontSize:12}}>📞 {k.telefon}</span>}
-                  {(bisikletler||[]).filter(b=>b.kundeId===k.id).map(b=>(
-                    <span key={b.id} style={{background:`${COLORS.teal}22`,color:COLORS.teal,borderRadius:10,padding:"1px 8px",fontSize:11,fontWeight:500}}>
-                      🚲 {b.marke} {b.modell}{b.rahmenGroesse?" "+b.rahmenGroesse:""}
+                  {(bisikletler||[]).filter(b=>b.kundeId===k.id).slice(0,2).map(b=>(
+                    <span key={b.id} style={{background:`${COLORS.teal}22`,color:COLORS.teal,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:500,whiteSpace:"nowrap"}}>
+                      🚲 {b.modell||b.marke}
                     </span>
                   ))}
+                  {(bisikletler||[]).filter(b=>b.kundeId===k.id).length>2&&(
+                    <span style={{color:COLORS.muted,fontSize:10}}>+{(bisikletler||[]).filter(b=>b.kundeId===k.id).length-2}</span>
+                  )}
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
@@ -2241,7 +2264,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
     win.document.close();setTimeout(()=>win.print(),600);
   }
   return(
-    <div style={{maxWidth:680}}>
+    <div style={{maxWidth:"100%"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <h2>Auftragbescheinigung Nr. {rechnung.nummer}</h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -2967,7 +2990,7 @@ function EnvanterForm({item,onSave,onAbbruch}){
   const isEdit=!!item;
 
   return(
-    <div style={{maxWidth:640}}>
+    <div style={{maxWidth:"100%"}}>
       <h2 style={{marginBottom:4}}>{isEdit?"Fahrrad bearbeiten":"Neues Fahrrad"}</h2>
       <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Lager-Eingang erfassen</div>
 
@@ -2980,7 +3003,7 @@ function EnvanterForm({item,onSave,onAbbruch}){
           <div><label style={labelStyle}>Modell *</label>
             <input placeholder="z.B. FX3, Solero, Attain" value={form.modell} onChange={e=>F("modell",e.target.value)} style={inputStyle}/></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:12}}>
           <div><label style={labelStyle}>Farbe</label>
             <input placeholder="z.B. Schwarz matt" value={form.farbe} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Üretim Yılı</label>
@@ -3073,7 +3096,7 @@ function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
     onAbbruch={()=>setEditModus(false)}/>;
 
   return(
-    <div style={{maxWidth:640}}>
+    <div style={{maxWidth:"100%"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
         <div>
           <h2 style={{fontSize:22,fontWeight:700,marginBottom:4}}>{item.marke} {item.modell}</h2>
@@ -3145,7 +3168,7 @@ function QuickAuftragScreen({kunden,bisikletler,onKundeWaehle,onNeuKunde,onAbbru
     .filter(k=>`${k.vorname} ${k.nachname} ${k.telefon||""} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()));
 
   return(
-    <div style={{maxWidth:560}}>
+    <div style={{maxWidth:"100%"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <h2 style={{fontSize:20,fontWeight:700}}>⚡ Neuer Auftrag</h2>
         <button onClick={onAbbruch} style={btnSecondary}>✕</button>
