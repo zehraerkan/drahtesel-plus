@@ -191,7 +191,7 @@ async function deleteFoto(fotoId, url) {
   await dbDelete("fotos", fotoId);
 }
 async function getFotos(entityType, entityId) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/fotos?entity_type=eq.${entityType}&entity_id=eq.${entityId}&select=*`, { headers: getHeaders() });
+  const r = await fetchWithAuth(`${SUPA_URL}/rest/v1/fotos?entity_type=eq.${entityType}&entity_id=eq.${entityId}&select=*`);
   if (!r.ok) return [];
   return r.json();
 }
@@ -498,14 +498,13 @@ export default function DrahteselApp() {
         dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"),
       ]);
       const neueKunden=kR.map(rowToKunde);
+      const neueAuftraege=aR.map(rowToAuftrag);
       setKunden(neueKunden);
       setBisikletler(bR.map(rowToBisiklet));
-      setAuftraege(aR.map(rowToAuftrag));
+      setAuftraege(neueAuftraege);
       setRechnungen(rR.map(rowToRechnung));
       setEnvanter(eR.map(rowToEnvanter));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
-      // selAuftrag stale veriyi güncelle
-      const neueAuftraege=aR.map(rowToAuftrag);
       setSelAuftrag(prev=>prev?neueAuftraege.find(a=>a.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
     finally { setLaden(false); }
@@ -904,7 +903,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
   );
 }
 function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}){
-  const offene=auftraege.filter(a=>a.status!=="Abgerechnet").length;
+  const offene=auftraege.filter(a=>!["Abgerechnet","Abgeholt"].includes(a.status)).length;
   const nav=[
     {id:"dashboard",label:"Dashboard",icon:"⊞"},
     {id:"auftraege",label:"Arbeitsaufträge",icon:"🔧",badge:offene||null},
@@ -982,6 +981,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
           {label:"Kunden gesamt",wert:kunden.length,icon:"👥",farbe:COLORS.blue},
           {label:"Umsatz gesamt",wert:formatEuro(gesamt),icon:"💶",farbe:COLORS.accent},
           {label:"Satılık Bisiklet",wert:(envanter||[]).filter(e=>["Im Laden","Im Lager","Satışa hazır"].includes(e.durum)).length,icon:"🏪",farbe:COLORS.teal,click:()=>setScreen("envanter")},
+          {label:"Abgeholt (heute)",wert:auftraege.filter(a=>a.status==="Abgeholt"&&a.erstellt===heute()).length,icon:"📦",farbe:"#6b7280"},
         ].map(s=>(
           <div key={s.label} onClick={s.click} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",cursor:s.click?"pointer":"default"}}>
             <div style={{fontSize:24,marginBottom:8}}>{s.icon}</div>
@@ -1106,7 +1106,7 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch})
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 16px",marginBottom:16}}>
           <label style={labelStyle}>Fahrrad aus gespeicherten Daten wählen (optional)</label>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {bisikletler.map(b=>(
+            {(bisikletler||[]).map(b=>(
               <button key={b.id} onClick={()=>{F("bisikletId",b.id);F("fahrradModell",`${b.marke||""} ${b.modell||""}`.trim());F("fahrradFarbe",b.farbe||"");F("fahrradNr",b.rahmennr||"");}}
                 style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${form.bisikletId===b.id?COLORS.teal:COLORS.border}`,background:form.bisikletId===b.id?`${COLORS.teal}22`:"transparent",color:form.bisikletId===b.id?COLORS.teal:COLORS.muted,cursor:"pointer",fontSize:12}}>
                 🚲 {b.marke} {b.modell} {b.farbe?`(${b.farbe})`:""}
@@ -1202,7 +1202,7 @@ function WaMessageEditor({template,kunde,auftrag}){
     try{return template.text(kunde||{},auftrag||{});}catch{return "";}
   };
   const [msg,setMsg]=useState(safeMsg);
-  useEffect(()=>{ try{setMsg(template.text(kunde||{},auftrag||{}));}catch{} },[template.id]);
+  useEffect(()=>{ try{setMsg(template.text(kunde||{},auftrag||{}));}catch{} },[template.id,kunde?.telefon,auftrag?.id,auftrag?.status]);
 
   return(
     <div style={{background:COLORS.surface,borderRadius:10,padding:14,marginTop:4}}>
@@ -1260,6 +1260,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
 
   function drucken(){
     const win=window.open("","_blank");
+    if(!printRef.current)return;
     win.document.write(`<html><head><title>Arbeitsauftrag #${auftrag.nummer}</title>
     <style>body{font-family:sans-serif;margin:0;padding:32px;font-size:13px;color:#111;}
     table{width:100%;border-collapse:collapse;}th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #eee;}
@@ -1512,7 +1513,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
                 <th style={{padding:"8px",textAlign:"right",borderBottom:"2px solid #111"}}>Menge</th>
                 <th style={{padding:"8px",textAlign:"right",borderBottom:"2px solid #111"}}>Gesamt</th>
               </tr></thead>
-              <tbody>{auftrag.positionen.map((p,i)=>(
+              <tbody>{(auftrag.positionen||[]).map((p,i)=>(
                 <tr key={p.id} style={{borderBottom:"1px solid #eee"}}>
                   <td style={{padding:"8px",color:"#888"}}>{i+1}</td>
                   <td style={{padding:"8px"}}>{p.beschreibung}</td>
@@ -1582,6 +1583,7 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
   const [fotos,setFotos]=useState([]);
   const [yukleniyor,setYukleniyor]=useState(false);
   const [preview,setPreview]=useState(null);
+  const [silOnay,setSilOnay]=useState(null);
   const inputRef=useRef();
 
   useEffect(()=>{
@@ -1617,9 +1619,10 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
     setYukleniyor(false);
   }
 
-  async function silFoto(foto){
-    // Native confirm kullan (FotoGalerie kendi modal'ı yönetemiyor)
-    if(!window.confirm("Bu fotoğrafı sil?"))return;
+  const [silOnay,setSilOnay]=useState(null); // foto objesi
+  async function silFotoOnay(foto){
+    if(!foto)return;
+    setSilOnay(null);
     try{
       if(!foto.local)await deleteFoto(foto.id,foto.url);
       setFotos(p=>p.filter(f=>f.id!==foto.id));
@@ -1628,12 +1631,14 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
 
   return(
     <div>
+      {silOnay&&<ConfirmModal msg="Dieses Foto wirklich löschen?" icon="🗑️"
+        okLabel="Löschen" onOk={()=>silFotoOnay(silOnay)} onCancel={()=>setSilOnay(null)}/>}
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:10}}>
         {fotos.map(f=>(
           <div key={f.id} style={{position:"relative",width:90,height:90}}>
             <img src={f.url} alt="" onClick={()=>setPreview(f.url)}
               style={{width:90,height:90,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`2px solid ${COLORS.border}`}}/>
-            <button onClick={()=>silFoto(f)}
+            <button onClick={()=>setSilOnay(f)}
               style={{position:"absolute",top:-6,right:-6,background:COLORS.red,border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",color:"white",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>×</button>
             {f.local&&<div style={{position:"absolute",bottom:2,left:2,background:"#0008",borderRadius:3,padding:"1px 4px",fontSize:9,color:"#fff"}}>lokal</div>}
           </div>
@@ -1816,7 +1821,7 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
 
       <div style={{fontWeight:600,marginBottom:12}}>Servicehistorie ({auftraege.length} Aufträge)</div>
       {auftraege.length===0&&<div style={{color:COLORS.muted,fontSize:13}}>Noch kein Auftrag für dieses Fahrrad.</div>}
-      {auftraege.map(a=>{const st=STATUS[a.status]||STATUS["Neu"];return(
+      {(auftraege||[]).map(a=>{const st=STATUS[a.status]||STATUS["Neu"];return(
         <div key={a.id} onClick={()=>onAuftrag(a)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
           <div>
@@ -2013,7 +2018,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
         </div>
       </div>
       {bisikletler.length===0&&<div style={{color:COLORS.muted,fontSize:13,marginBottom:16}}>Noch kein Fahrrad erfasst. Fahrrad erfassen für bessere Servicehistorie.</div>}
-      {bisikletler.map(b=>(
+      {(bisikletler||[]).map(b=>(
         <div key={b.id} onClick={()=>onBisikletDetail(b)} style={{background:COLORS.card,border:`1px solid ${COLORS.teal}44`,borderRadius:10,padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.teal} onMouseLeave={e=>e.currentTarget.style.borderColor=`${COLORS.teal}44`}>
           <div>
@@ -2033,7 +2038,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
       {auftraege.length>0&&(
         <>
           <div style={{fontWeight:600,marginTop:16,marginBottom:12}}>Alle Aufträge ({auftraege.length})</div>
-          {auftraege.map(a=>{const st=STATUS[a.status]||STATUS["Neu"];return(
+          {(auftraege||[]).map(a=>{const st=STATUS[a.status]||STATUS["Neu"];return(
             <div key={a.id} onClick={()=>onAuftrag(a)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}
               onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
               <div>
@@ -2053,7 +2058,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
       {rechnungen.length>0&&(
         <>
           <div style={{fontWeight:600,marginTop:16,marginBottom:12}}>Rechnungen ({rechnungen.length})</div>
-          {rechnungen.map(r=>(
+          {(rechnungen||[]).map(r=>(
             <div key={r.id} onClick={()=>onRechnung(r)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}
               onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
               <div><span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:13}}>Rg. {r.nummer}</span><span style={{color:COLORS.muted,fontSize:13,marginLeft:12}}>{r.erstellt}</span></div>
@@ -2084,6 +2089,7 @@ function NeuKundeForm({onSave,onAbbruch}){
     <div style={{display:"flex",gap:12}}>
       <button onClick={()=>{
         if(!form.vorname||!form.nachname){showToast("Pflichtfelder ausfüllen!","err");return;}
+        if(form.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)){showToast("Bitte gültige E-Mail-Adresse eingeben.","err");return;}
         if(!dsgvoOk){showToast("Bitte Datenschutzhinweis bestätigen.","err");return;}
         onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
       }} style={btnPrimary}>Speichern</button>
@@ -2270,10 +2276,9 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   const printRef=useRef();const k=kunde||{};
   const [editModus,setEditModus]=useState(false);
   const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
-  const [editPositionen,setEditPositionen]=useState(rechnung.positionen||[]);
-
   function drucken(){
     const win=window.open("","_blank");
+    if(!printRef.current)return;
     win.document.write(`<html><head><title>Rechnung ${rechnung.nummer}</title>
     <style>body{font-family:sans-serif;margin:0;padding:40px;color:#111;font-size:13px;}
     table{width:100%;border-collapse:collapse;}th{text-align:left;padding:6px 8px;background:#f0f0f0;font-size:11px;}
@@ -2429,8 +2434,7 @@ function KatalogScreen(){
     setNeuGruppe("");
   }
   function gruppeLoeschen(idx){
-    // KatalogScreen kendi confirm'ini yönetiyor
-    if(!window.confirm("Gruppe löschen?"))return;
+    if(!window.confirm("Gruppe löschen?"))return; // TODO: modal
     speichern(katalog.filter((_,i)=>i!==idx));
   }
   function itemHinzufuegen(){
@@ -3104,7 +3108,7 @@ function EnvanterForm({item,onSave,onAbbruch}){
 }
 
 // ─── ENVANTER DETAIL ──────────────────────────────────────────────────────────
-function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
+function EnvanterDetail({item,onGuncelle,onSil,onAbbruch,showConfirm}){
   const [editModus,setEditModus]=useState(false);
   const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Mevcut"];
 
@@ -3125,7 +3129,7 @@ function EnvanterDetail({item,onGuncelle,onSil,onAbbruch}){
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setEditModus(true)} style={btnSecondary}>✏️ Düzenle</button>
-          <button onClick={()=>{if(window.confirm(`"${item.marke} ${item.modell}" silinsin mi?`))onSil(item.id);}}
+          <button onClick={()=>showConfirm&&showConfirm(`"${item.marke} ${item.modell}" silinsin mi?`,()=>onSil(item.id),{icon:"🚲",okLabel:"Sil"})}
             style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
         </div>
