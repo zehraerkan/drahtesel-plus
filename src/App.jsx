@@ -1227,8 +1227,6 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   const [zahlungModal,setZahlungModal]=useState(false);
   const [zahlungsart,setZahlungsart]=useState("Bar");
   const [posEditModus,setPosEditModus]=useState(false);
-  // Abgerechnet/Abgeholt'ta edit modu kapansın
-  useEffect(()=>{if(istAbgerechnet)setPosEditModus(false);},[istAbgerechnet]);
   const [editPositionen,setEditPositionen]=useState((auftrag&&auftrag.positionen)||[]);
   const [posKatalogOffen,setPosKatalogOffen]=useState(false);
   const [posKatalogSuche,setPosKatalogSuche]=useState("");
@@ -1242,6 +1240,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   const posKatalog=LEISTUNGSKATALOG.map(g=>({...g,items:g.items.filter(i=>i.name.toLowerCase().includes(posKatalogSuche.toLowerCase()))})).filter(g=>g.items.length>0);
   const statusFlow=["Neu","In Arbeit","Fertig","Abgerechnet","Abgeholt"];
   const istAbgerechnet=auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt";
+  // Abgerechnet/Abgeholt'a geçince edit modu kapat
+  useEffect(()=>{if(istAbgerechnet)setPosEditModus(false);},[istAbgerechnet]);
 
   function drucken(){
     const win=window.open("","_blank");
