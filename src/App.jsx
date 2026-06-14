@@ -742,6 +742,7 @@ export default function DrahteselApp() {
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="auftrag-detail"&&selAuftrag&&<AuftragDetail
           auftrag={selAuftrag}
+          isMobile={isMobile}
           kunde={kunden.find(k=>k.id===selAuftrag.kundeId)||{}}
           onLoeschen={async(id)=>{try{await auftragLoeschen(id);setScreen("auftraege");showToast("Auftrag gelöscht.");}catch(e){showToast("Fehler","err");}}}
           onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
@@ -1220,12 +1221,14 @@ function WaMessageEditor({template,kunde,auftrag}){
   );
 }
 
-function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm}){
+function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm,isMobile}){
   const [notizen,setNotizen]=useState((auftrag&&auftrag.notizen)||"");
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
   const [zahlungsart,setZahlungsart]=useState("Bar");
   const [posEditModus,setPosEditModus]=useState(false);
+  // Abgerechnet/Abgeholt'ta edit modu kapansın
+  useEffect(()=>{if(istAbgerechnet)setPosEditModus(false);},[istAbgerechnet]);
   const [editPositionen,setEditPositionen]=useState((auftrag&&auftrag.positionen)||[]);
   const [posKatalogOffen,setPosKatalogOffen]=useState(false);
   const [posKatalogSuche,setPosKatalogSuche]=useState("");
@@ -1308,7 +1311,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       </div>
 
       {/* WHATSAPP ŞABLONLARI */}
-      {!!((kunde&&kunde.whatsapp)||(kunde&&kunde.telefon)||(kunde&&kunde.email))&&(
+      {!istAbgerechnet&&!!((kunde&&kunde.whatsapp)||(kunde&&kunde.telefon)||(kunde&&kunde.email))&&(
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"14px 18px",marginBottom:16}}>
           <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>💬 SCHNELLNACHRICHTEN</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:waTemplate?12:0}}>
@@ -1337,17 +1340,17 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       )}
 
       {/* POZİSYON DÜZENLEME BÖLÜMÜ */}
-      {!istAbgerechnet&&(
+      {(
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
             <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>🔧 LEİSTUNGSPOSİTİONEN</div>
-            <button onClick={()=>{setPosEditModus(p=>!p);setEditPositionen(auftrag.positionen||[]);}}
+            {!istAbgerechnet&&<button onClick={()=>{setPosEditModus(p=>!p);setEditPositionen(auftrag.positionen||[]);}}
               style={{...btnSecondary,fontSize:12,color:posEditModus?COLORS.accent:COLORS.muted,borderColor:posEditModus?COLORS.accent:COLORS.border,padding:"5px 12px"}}>
               {posEditModus?"✕ İptal":"✏️ Düzenle"}
-            </button>
+            </button>}
           </div>
 
-          {!posEditModus?(
+          {(!posEditModus||istAbgerechnet)?(
             /* GÖRÜNTÜLEME MODU */
             <div>
               {(auftrag.positionen||[]).length===0&&<div style={{color:COLORS.muted,fontSize:13}}>Henüz pozisyon eklenmemiş.</div>}
