@@ -1619,7 +1619,6 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
     setYukleniyor(false);
   }
 
-  const [silOnay,setSilOnay]=useState(null); // foto objesi
   async function silFotoOnay(foto){
     if(!foto)return;
     setSilOnay(null);
