@@ -739,6 +739,7 @@ export default function DrahteselApp() {
           onBearbeiten={async(b)=>{try{await bisikletAktualisieren(b);setSelBisiklet(b);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="neu-auftrag"&&selKunde&&<NeuAuftragForm
+          isMobile={isMobile}
           kunde={selKunde}
           bisiklet={selBisiklet}
           bisikletler={bisikletler.filter(b=>b.kundeId===selKunde.id)}
@@ -1079,7 +1080,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
 }
 
 // ─── NEU AUFTRAG FORM ─────────────────────────────────────────────────────────
-function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch}){
+function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch,isMobile}){
   const [form,setForm]=useState({
     fahrradModell:bisiklet?`${bisiklet.marke||""} ${bisiklet.modell||""}`.trim():"",
     bisikletId:(bisiklet&&bisiklet.id)||"",
