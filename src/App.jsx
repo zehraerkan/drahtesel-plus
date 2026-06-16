@@ -867,8 +867,14 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
         </div>
         <input placeholder="E-Mail *" value={form.email} onChange={e=>F("email",e.target.value)} style={{...inputStyle,marginBottom:12}}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <input placeholder="Telefon" value={form.telefon} onChange={e=>F("telefon",e.target.value)} style={inputStyle}/>
-          <input placeholder="WhatsApp" value={form.whatsapp} onChange={e=>F("whatsapp",e.target.value)} style={inputStyle}/>
+          <input placeholder="Telefon (z.B. 0176…)" value={form.telefon}
+            onChange={e=>F("telefon",e.target.value)}
+            onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("telefon",f);}}
+            style={inputStyle} type="tel"/>
+          <input placeholder="WhatsApp (leer = wie Telefon)" value={form.whatsapp}
+            onChange={e=>F("whatsapp",e.target.value)}
+            onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("whatsapp",f);}}
+            style={inputStyle} type="tel"/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12,marginBottom:12}}>
           <input placeholder="Straße *" value={form.strasse} onChange={e=>F("strasse",e.target.value)} style={inputStyle}/>
@@ -2106,8 +2112,20 @@ function KundeFormFelder({form,F}){
     <div style={{color:COLORS.muted,fontSize:12,fontWeight:600,letterSpacing:1,marginTop:4}}>KONTAKT</div>
     <input placeholder="E-Mail" value={form.email} onChange={e=>F("email",e.target.value)} style={inputStyle}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-      <input placeholder="Telefon" value={form.telefon} onChange={e=>F("telefon",e.target.value)} style={inputStyle}/>
-      <input placeholder="WhatsApp" value={form.whatsapp} onChange={e=>F("whatsapp",e.target.value)} style={inputStyle}/>
+      <div>
+        <input placeholder="Telefon (z.B. 0176 12345678)" type="tel"
+          value={form.telefon} onChange={e=>F("telefon",e.target.value)}
+          onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("telefon",f);}}
+          style={inputStyle}/>
+        {form.telefon&&<div style={{fontSize:11,color:COLORS.muted,marginTop:3,paddingLeft:2}}>→ {formatTelefon(form.telefon)||form.telefon}</div>}
+      </div>
+      <div>
+        <input placeholder="WhatsApp (leer = wie Telefon)" type="tel"
+          value={form.whatsapp} onChange={e=>F("whatsapp",e.target.value)}
+          onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("whatsapp",f);}}
+          style={inputStyle}/>
+        {form.whatsapp&&<div style={{fontSize:11,color:COLORS.muted,marginTop:3,paddingLeft:2}}>→ {formatTelefon(form.whatsapp)||form.whatsapp}</div>}
+      </div>
     </div>
     <div style={{color:COLORS.muted,fontSize:12,fontWeight:600,letterSpacing:1,marginTop:4}}>ADRESSE</div>
     <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12}}>
