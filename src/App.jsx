@@ -368,6 +368,18 @@ function getFirma(){
 }
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
+
+function formatTelefon(raw){
+  if(!raw||!raw.trim())return "";
+  var s=raw.trim();
+  var digits=s.replace(/[^0-9]/g,"");
+  if(digits.startsWith("05")&&digits.length===11) return "+90"+digits.slice(1);
+  if(digits.startsWith("0")&&digits.length>=10&&digits.length<=12) return "+49"+digits.slice(1);
+  if(digits.startsWith("49")&&digits.length>=11) return "+"+digits;
+  if(digits.startsWith("90")&&digits.length===12) return "+"+digits;
+  if(s.startsWith("+")) return "+"+digits;
+  return s;
+}
 function calcNetto(b){return b/1.19;}
 function calcMwst(b){return b-calcNetto(b);}
 
@@ -867,13 +879,13 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
         </div>
         <input placeholder="E-Mail *" value={form.email} onChange={e=>F("email",e.target.value)} style={{...inputStyle,marginBottom:12}}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <input placeholder="Telefon (z.B. 0176…)" value={form.telefon}
+          <input placeholder="Telefon (z.B. 0176 12345678)" value={form.telefon}
             onChange={e=>F("telefon",e.target.value)}
-            onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("telefon",f);}}
+            onBlur={e=>{try{const f=formatTelefon(e.target.value);if(f)F("telefon",f);}catch{}}}
             style={inputStyle} type="tel"/>
-          <input placeholder="WhatsApp (leer = wie Telefon)" value={form.whatsapp}
+          <input placeholder="WhatsApp (optional)" value={form.whatsapp}
             onChange={e=>F("whatsapp",e.target.value)}
-            onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("whatsapp",f);}}
+            onBlur={e=>{try{const f=formatTelefon(e.target.value);if(f)F("whatsapp",f);}catch{}}}
             style={inputStyle} type="tel"/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12,marginBottom:12}}>
@@ -2112,20 +2124,14 @@ function KundeFormFelder({form,F}){
     <div style={{color:COLORS.muted,fontSize:12,fontWeight:600,letterSpacing:1,marginTop:4}}>KONTAKT</div>
     <input placeholder="E-Mail" value={form.email} onChange={e=>F("email",e.target.value)} style={inputStyle}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-      <div>
-        <input placeholder="Telefon (z.B. 0176 12345678)" type="tel"
-          value={form.telefon} onChange={e=>F("telefon",e.target.value)}
-          onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("telefon",f);}}
-          style={inputStyle}/>
-        {form.telefon&&<div style={{fontSize:11,color:COLORS.muted,marginTop:3,paddingLeft:2}}>→ {formatTelefon(form.telefon)||form.telefon}</div>}
-      </div>
-      <div>
-        <input placeholder="WhatsApp (leer = wie Telefon)" type="tel"
-          value={form.whatsapp} onChange={e=>F("whatsapp",e.target.value)}
-          onBlur={e=>{const f=formatTelefon(e.target.value);if(f)F("whatsapp",f);}}
-          style={inputStyle}/>
-        {form.whatsapp&&<div style={{fontSize:11,color:COLORS.muted,marginTop:3,paddingLeft:2}}>→ {formatTelefon(form.whatsapp)||form.whatsapp}</div>}
-      </div>
+      <input placeholder="Telefon (z.B. 0176 12345678)" type="tel"
+        value={form.telefon} onChange={e=>F("telefon",e.target.value)}
+        onBlur={e=>{try{const f=formatTelefon(e.target.value);if(f)F("telefon",f);}catch{}}}
+        style={inputStyle}/>
+      <input placeholder="WhatsApp (optional)" type="tel"
+        value={form.whatsapp} onChange={e=>F("whatsapp",e.target.value)}
+        onBlur={e=>{try{const f=formatTelefon(e.target.value);if(f)F("whatsapp",f);}catch{}}}
+        style={inputStyle}/>
     </div>
     <div style={{color:COLORS.muted,fontSize:12,fontWeight:600,letterSpacing:1,marginTop:4}}>ADRESSE</div>
     <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12}}>
