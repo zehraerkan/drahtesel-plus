@@ -351,7 +351,11 @@ const LEISTUNGSKATALOG = [
   ]},
 ];
 const WA_TEMPLATES = [
-  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) ist fertig und kann abgeholt werden. Gesamtbetrag: ${formatEuro((a&&a.brutto)||0)}. Wir freuen uns auf Ihren Besuch! – Drahtesel Plus`},
+  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${(k&&k.vorname)||""},
+Ihr Fahrrad${(a&&a.fahrradModell)?` (${a.fahrradModell})`:""} ist fertig und steht zur Abholung bereit! Der Gesamtpreis beträgt ${formatEuro((a&&a.brutto)||0)}.
+Es wäre super, wenn Sie das Geld passend in Bar mitbringen könnten. Wir freuen uns, wenn Sie es zeitnah abholen können.
+Viele Grüße
+Drahtesel Plus`},
   {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
   {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Unser Kostenvoranschlag für Ihr Fahrrad (${(a&&a.fahrradModell)||""}): ca. ${formatEuro((a&&a.brutto)||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
 ];
