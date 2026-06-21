@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SUPA_URL = "https://dtpjypraefamxgssklgv.supabase.co";
@@ -172,9 +172,34 @@ async function dbDelete(table, id) {
 }
 
 // ─── FOTOĞRAF YÜKLEME ────────────────────────────────────────────────────────
+function resizeImage(file, maxW=1200){
+  return new Promise((resolve)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      let w=img.width, h=img.height;
+      if(w<=maxW){resolve(file);return;}
+      const ratio=maxW/w; w=maxW; h=Math.round(h*ratio);
+      const canvas=document.createElement("canvas");
+      canvas.width=w; canvas.height=h;
+      canvas.getContext("2d").drawImage(img,0,0,w,h);
+      canvas.toBlob(blob=>resolve(blob||file),"image/jpeg",0.82);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);resolve(file);};
+    img.src=url;
+  });
+}
+
 async function uploadFoto(file, entityType, entityId) {
+  // Boyut kontrolü — max 5MB
+  if(file.size > 5 * 1024 * 1024) throw new Error("Fotoğraf 5MB'dan büyük olamaz.");
+  // Tip kontrolü
+  if(!file.type.startsWith("image/")) throw new Error("Sadece resim dosyası yüklenebilir.");
   const ext = (file.name||"foto.jpg").split(".").pop()||"jpg";
   const path = `${entityType}/${entityId}/${genId()}.${ext}`;
+  // 1200px max genişliğe küçült
+  const resized = await resizeImage(file, 1200);
   const r = await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, {
     method: "POST",
     headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${_authToken||SUPA_KEY}`, "Content-Type": file.type },
@@ -720,7 +745,7 @@ export default function DrahteselApp() {
         )}
         {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
-          onDetail={(a)=>{setSelAuftrag(a);setSelKunde(kunden.find(k=>k.id===a.kundeId));setSelBisiklet(null);setPrevScreen("auftraege");setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${a.nummer}`}]);setScreen("auftrag-detail");}}
+          onDetail={(a)=>{setSelAuftrag(a);const k=kunden.find(k=>k.id===a.kundeId);setSelKunde(k||{id:a.kundeId,vorname:a.kundeVorname,nachname:a.kundeNachname,kdNr:a.kundeKdNr});setSelBisiklet(null);setPrevScreen("auftraege");setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${a.nummer}`}]);setScreen("auftrag-detail");}}
           onKundeDetail={(k)=>{if(k){setSelKunde(k);setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"kunde-detail",label:`${k.nachname}, ${k.vorname}`}]);setScreen("kunde-detail");}}}/>}
         {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege} bisikletler={bisikletler}
           onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}/>}
@@ -981,10 +1006,10 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}
   );
 }
 function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
-  const gesamt=rechnungen.reduce((s,r)=>s+(r.brutto||0),0);
-  const offene=auftraege.filter(a=>["Neu","In Arbeit"].includes(a.status));
-  const fertige=auftraege.filter(a=>a.status==="Fertig");
-  const abgeholt=auftraege.filter(a=>a.status==="Abgeholt");
+  const gesamt=useMemo(()=>rechnungen.reduce((s,r)=>s+(r.brutto||0),0),[rechnungen]);
+  const offene=useMemo(()=>auftraege.filter(a=>["Neu","In Arbeit"].includes(a.status)),[auftraege]);
+  const fertige=useMemo(()=>auftraege.filter(a=>a.status==="Fertig"),[auftraege]);
+  const abgeholt=useMemo(()=>auftraege.filter(a=>a.status==="Abgeholt"),[auftraege]);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
@@ -1034,7 +1059,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
 }
 function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
   const [filter,setFilter]=useState("alle");
-  const gefiltert=[...auftraege].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).filter(a=>filter==="alle"||a.status===filter);
+  const gefiltert=useMemo(()=>[...auftraege].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).filter(a=>filter==="alle"||a.status===filter),[auftraege,filter]);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -1864,9 +1889,10 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
 function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
   const [suche,setSuche]=useState("");
 
-  const gefiltert=[...kunden]
+  const gefiltert=useMemo(()=>[...kunden]
     .sort((a,b)=>(parseInt(b.kdNr)||0)-(parseInt(a.kdNr)||0))
-    .filter(k=>`${k.vorname} ${k.nachname} ${k.email||""} ${k.telefon||""} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()));
+    .filter(k=>`${k.vorname} ${k.nachname} ${k.email||""} ${k.telefon||""} ${k.kdNr}`.toLowerCase().includes(suche.toLowerCase()))
+  ,[kunden,suche]);
 
   return(
     <div>
@@ -2160,17 +2186,17 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
   const monatsName=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 
   // Filtreleme
-  let gefRechnung=rechnungen;
-  if(zeitraum!=="alle"){
+  const gefRechnung=useMemo(()=>{
+    if(zeitraum==="alle")return rechnungen;
     const cutoff=new Date();
     if(zeitraum==="30")cutoff.setDate(cutoff.getDate()-30);
     else if(zeitraum==="90")cutoff.setDate(cutoff.getDate()-90);
     else if(zeitraum==="365")cutoff.setDate(cutoff.getDate()-365);
-    gefRechnung=rechnungen.filter(r=>r.erstellt&&erstelltZuDate(r.erstellt)>=cutoff);
-  }
+    return rechnungen.filter(r=>r.erstellt&&erstelltZuDate(r.erstellt)>=cutoff);
+  },[rechnungen,zeitraum]);
 
-  const gesamtUmsatz=gefRechnung.reduce((s,r)=>s+(+r.brutto||0),0);
-  const gesamtNetto=gefRechnung.reduce((s,r)=>s+(+r.netto||calcNetto(+r.brutto||0)),0);
+  const gesamtUmsatz=useMemo(()=>gefRechnung.reduce((s,r)=>s+(+r.brutto||0),0),[gefRechnung]);
+  const gesamtNetto=useMemo(()=>gefRechnung.reduce((s,r)=>s+(+r.netto||calcNetto(+r.brutto||0)),0),[gefRechnung]);
   const gesamtMwst=gesamtUmsatz-gesamtNetto;
   const avgRechnung=gefRechnung.length?gesamtUmsatz/gefRechnung.length:0;
 
