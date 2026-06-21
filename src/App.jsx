@@ -376,9 +376,12 @@ const LEISTUNGSKATALOG = [
   ]},
 ];
 const WA_TEMPLATES = [
-  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo ${(k&&k.vorname)||""},
-Ihr Fahrrad${(a&&a.fahrradModell)?` (${a.fahrradModell})`:""} ist fertig und steht zur Abholung bereit! Der Gesamtpreis beträgt ${formatEuro((a&&a.brutto)||0)}.
+  {id:"fertig",label:"✅ Bisiklet hazır",text:(k,a)=>`Hallo${k&&k.vorname?" "+k.vorname:""},
+Ihr Fahrrad${a&&a.fahrradModell?" ("+a.fahrradModell+")":""} ist fertig und steht zur Abholung bereit! Der Gesamtpreis beträgt ${formatEuro((a&&a.brutto)||0)}.
 Es wäre super, wenn Sie das Geld passend in Bar mitbringen könnten. Wir freuen uns, wenn Sie es zeitnah abholen können.
+Unsere Öffnungszeiten:
+Mo–Fr: 10:00–19:00 Uhr
+Sa: 10:00–16:00 Uhr
 Viele Grüße
 Drahtesel Plus`},
   {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
