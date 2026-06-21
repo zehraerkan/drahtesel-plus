@@ -741,10 +741,12 @@ export default function DrahteselApp() {
           showConfirm={showConfirm} showAlert={showAlert}
         />}
         {screen==="neu-kunde"&&<NeuKundeForm
+          showToast={showToast}
           onSave={async(k)=>{try{await kundeHinzufuegen(k);showToast("Kunde angelegt!");setScreen("kunden");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           onAbbruch={()=>setScreen("kunden")}/>}
         {screen==="neu-bisiklet"&&selKunde&&<NeuBisikletForm
           kunde={selKunde}
+          showToast={showToast}
           onSave={async(b)=>{try{const saved=await bisikletHinzufuegen(b,selKunde.id);showToast("Fahrrad gespeichert!");setScreen("kunde-detail");return saved;}catch(e){showToast("Fehler","err");}}}
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="bisiklet-detail"&&selBisiklet&&<BisikletDetail
@@ -756,6 +758,7 @@ export default function DrahteselApp() {
           onAbbruch={()=>setScreen("kunde-detail")}/>}
         {screen==="neu-auftrag"&&selKunde&&<NeuAuftragForm
           isMobile={isMobile}
+          showToast={showToast}
           kunde={selKunde}
           bisiklet={selBisiklet}
           bisikletler={bisikletler.filter(b=>b.kundeId===selKunde.id)}
@@ -804,6 +807,7 @@ export default function DrahteselApp() {
           showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="katalog"&&<KatalogScreen/>}
         {screen==="envanter"&&<EnvanterScreen
+          showToast={showToast}
           envanter={envanter}
           onEkle={async(e)=>{try{await envanterHinzufuegen(e);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
           onGuncelle={async(e)=>{try{await envanterAktualisieren(e);showToast("Güncellendi!");}catch(err){showToast("Hata","err");}}}
@@ -1098,7 +1102,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
 }
 
 // ─── NEU AUFTRAG FORM ─────────────────────────────────────────────────────────
-function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch,isMobile}){
+function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch,isMobile,showToast}){
   const [form,setForm]=useState({
     fahrradModell:bisiklet?`${bisiklet.marke||""} ${bisiklet.modell||""}`.trim():"",
     bisikletId:(bisiklet&&bisiklet.id)||"",
@@ -1702,7 +1706,7 @@ function showToastGlobal(msg,art){
 }
 
 // ─── NEU BISIKLET FORM ────────────────────────────────────────────────────────
-function NeuBisikletForm({kunde,onSave,onAbbruch}){
+function NeuBisikletForm({kunde,onSave,onAbbruch,showToast}){
   const [form,setForm]=useState({marke:"",modell:"",farbe:"",rahmennr:"",baujahr:"",typ:"Herrenrad",reifengroesse:"",zustand:"Gut",hasarNotizen:""});
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
   const [saving,setSaving]=useState(false);
@@ -2089,7 +2093,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
   );
 }
 
-function NeuKundeForm({onSave,onAbbruch}){
+function NeuKundeForm({onSave,onAbbruch,showToast}){
   const [form,setForm]=useState({vorname:"",nachname:"",email:"",telefon:"",whatsapp:"",strasse:"",hausnr:"",plz:"",ort:"",land:"Deutschland",notiz:""});
   const [dsgvoOk,setDsgvoOk]=useState(false);
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -2921,6 +2925,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
   });
 
   if(ansicht==="neu") return <EnvanterForm
+    showToast={showToast}
     onSave={async(e)=>{await onEkle(e);setAnsicht("liste");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
@@ -3019,7 +3024,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
 }
 
 // ─── ENVANTER FORM ────────────────────────────────────────────────────────────
-function EnvanterForm({item,onSave,onAbbruch}){
+function EnvanterForm({item,onSave,onAbbruch,showToast}){
   const [form,setForm]=useState(item||{
     marke:"",modell:"",farbe:"",rahmenGroesse:"",rahmennummer:"",typ:"",
     uretimYili:"",schaltung:"Shimano",gangAnzahl:"",bremsart:"Scheibenbremse (hydraulisch)",
