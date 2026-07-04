@@ -18,6 +18,8 @@ function getHeaders() {
 
 let _refreshToken = null;
 let _tokenRefreshInterval = null;
+let _isRefreshing = false;
+let _refreshQueue = [];
 
 async function supaSignIn(email, passwort) {
   const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
@@ -39,15 +41,20 @@ async function supaSignIn(email, passwort) {
 }
 
 async function supaRefreshAccessToken() {
+  // Race condition önleme — birden fazla eş zamanlı refresh isteğini engelle
+  if (_isRefreshing) {
+    return new Promise(resolve => _refreshQueue.push(resolve));
+  }
+  _isRefreshing = true;
   try {
     const storedRefresh = _refreshToken || localStorage.getItem("dp_refresh_token");
-    if (!storedRefresh) return false;
+    if (!storedRefresh) { _isRefreshing = false; return false; }
     const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "apikey": SUPA_KEY },
       body: JSON.stringify({ refresh_token: storedRefresh }),
     });
-    if (!r.ok) return false;
+    if (!r.ok) { _isRefreshing = false; _refreshQueue.forEach(fn=>fn(false)); _refreshQueue=[]; return false; }
     const data = await r.json();
     _authToken = data.access_token;
     _refreshToken = data.refresh_token;
@@ -55,8 +62,14 @@ async function supaRefreshAccessToken() {
       localStorage.setItem("dp_auth_token", _authToken);
       localStorage.setItem("dp_refresh_token", _refreshToken);
     } catch {}
+    _isRefreshing = false;
+    _refreshQueue.forEach(fn=>fn(true));
+    _refreshQueue = [];
     return true;
   } catch {
+    _isRefreshing = false;
+    _refreshQueue.forEach(fn=>fn(false));
+    _refreshQueue = [];
     return false;
   }
 }
@@ -566,14 +579,8 @@ export default function DrahteselApp() {
   // ── CRUD fonksiyonları ──────────────────────────────────────────────────────
   async function kundeHinzufuegen(k) {
     const id=genId(); const erstellt=heute();
-    // Supabase'den mevcut en yüksek kdNr'yi al (silinen müşteriler dahil)
-    let maxNr=0;
-    try{
-      const rows=await dbGet("kunden");
-      maxNr=rows.reduce((m,r)=>Math.max(m,parseInt((r.data&&r.data.kdNr)||r.kdNr||0)||0),0);
-    }catch{
-      maxNr=kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0);
-    }
+    // State'teki kunden listesinden maxNr hesapla — ayrı DB çağrısı gereksiz
+    const maxNr=kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0);
     const kdNr=String(maxNr+1).padStart(4,"0");
     const neu={...k,id,kdNr,erstellt};
     await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
@@ -626,7 +633,7 @@ export default function DrahteselApp() {
   async function auftragNotizenAendern(id,notizen) {
     const a=auftraege.find(x=>x.id===id); if(!a)return;
     const {id:_,kundeId,bisikletId,status,erstellt,...data}=a;
-    try{await dbUpdate("auftraege",id,{data:{...data,notizen}});}catch(e){console.warn("Notizen:",e.message);}
+    try{await dbUpdate("auftraege",id,{data:{...data,notizen}});}catch(e){showToast("Notiz konnte nicht gespeichert werden","err");}
     setAuftraege(p=>p.map(x=>x.id===id?{...x,notizen}:x));
     setSelAuftrag(p=>p?{...p,notizen}:p);
   }
@@ -757,11 +764,11 @@ export default function DrahteselApp() {
           bisikletler={bisikletler.filter(b=>b.kundeId===selKunde.id)}
           auftraege={auftraege.filter(a=>a.kundeId===selKunde.id)}
           rechnungen={rechnungen.filter(r=>r.kundeId===selKunde.id)}
-          onBearbeiten={async(k)=>{try{await kundeAktualisieren(k);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
-          onLoeschen={async(id)=>{try{await kundeLoeschen(id);setScreen("kunden");showToast("Gelöscht.");}catch(e){showToast("Fehler","err");}}}
+          onBearbeiten={async(k)=>{try{await kundeAktualisieren(k);setKunden(p=>p.map(x=>x.id===k.id?{...x,...k}:x));setSelKunde(s=>s?.id===k.id?{...s,...k}:s);showToast("Gespeichert!");}catch(e){showToast("Fehler: "+e.message,"err");}}}
+          onLoeschen={async(id)=>{try{await kundeLoeschen(id);setKunden(p=>p.filter(x=>x.id!==id));setScreen("kunden");showToast("Gelöscht.");}catch(e){showToast("Fehler beim Löschen: "+e.message,"err");}}}
           onNeuBisiklet={()=>setScreen("neu-bisiklet")}
           onBisikletDetail={(b)=>{setSelBisiklet(b);setScreen("bisiklet-detail");}}
-          onBisikletLoeschen={async(id)=>{try{await bisikletLoeschen(id);showToast("Fahrrad gelöscht.");}catch(e){showToast("Fehler","err");}}}
+          onBisikletLoeschen={async(id)=>{try{await bisikletLoeschen(id);setBisikletler(p=>p.filter(x=>x.id!==id));showToast("Fahrrad gelöscht.");}catch(e){showToast("Fehler beim Löschen: "+e.message,"err");}}}
           onNeuAuftrag={(b)=>{if(b)setSelBisiklet(b);setScreen("neu-auftrag");}}
           onAuftrag={(a)=>{setSelAuftrag(a);setPrevScreen("kunde-detail");setScreen("auftrag-detail");}}
           onRechnung={(r)=>{setSelRechnung(r);setScreen("rechnung-detail");}}
@@ -770,6 +777,7 @@ export default function DrahteselApp() {
         />}
         {screen==="neu-kunde"&&<NeuKundeForm
           showToast={showToast}
+          kunden={kunden}
           onSave={async(k)=>{try{await kundeHinzufuegen(k);showToast("Kunde angelegt!");setScreen("kunden");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           onAbbruch={()=>setScreen("kunden")}/>}
         {screen==="neu-bisiklet"&&selKunde&&<NeuBisikletForm
@@ -806,8 +814,8 @@ export default function DrahteselApp() {
           auftrag={selAuftrag}
           isMobile={isMobile}
           kunde={kunden.find(k=>k.id===selAuftrag.kundeId)||{}}
-          onLoeschen={async(id)=>{try{await auftragLoeschen(id);setScreen("auftraege");showToast("Auftrag gelöscht.");}catch(e){showToast("Fehler","err");}}}
-          onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
+          onLoeschen={async(id)=>{try{await auftragLoeschen(id);setAuftraege(p=>p.filter(x=>x.id!==id));setScreen("auftraege");showToast("Auftrag gelöscht.");}catch(e){showToast("Fehler beim Löschen: "+e.message,"err");}}}
+          onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);setAuftraege(p=>p.map(x=>x.id===a.id?{...x,...a}:x));showToast("Gespeichert!");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           onStatusChange={async(id,st)=>{try{await auftragStatusAendern(id,st);showToast(`Status: ${st}`);}catch(e){showToast("Fehler","err");}}}
           onNotizenChange={async(id,n)=>{try{await auftragNotizenAendern(id,n);}catch(e){showToast("Fehler","err");}}}
           onRechnungErstellen={async(a)=>{
@@ -830,14 +838,14 @@ export default function DrahteselApp() {
         {screen==="rechnung-detail"&&selRechnung&&<RechnungDetail
           rechnung={selRechnung} kunde={kunden.find(k=>k.id===selRechnung.kundeId)}
           onAbbruch={()=>setScreen(selAuftrag?"auftrag-detail":"rechnungen")}
-          onLoeschen={async(id)=>{try{await rechnungLoeschen(id);setScreen("rechnungen");showToast("Rechnung gelöscht.");}catch(e){showToast("Fehler beim Löschen","err");}}}
-          onAktualisieren={async(r)=>{try{await rechnungAktualisieren(r);setSelRechnung(r);showToast("Gespeichert!");}catch(e){showToast("Fehler","err");}}}
+          onLoeschen={async(id)=>{try{await rechnungLoeschen(id);setRechnungen(p=>p.filter(x=>x.id!==id));setScreen("rechnungen");showToast("Rechnung gelöscht.");}catch(e){showToast("Fehler beim Löschen: "+e.message,"err");}}}
+          onAktualisieren={async(r)=>{try{await rechnungAktualisieren(r);setSelRechnung(r);setRechnungen(p=>p.map(x=>x.id===r.id?{...x,...r}:x));showToast("Gespeichert!");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="katalog"&&<KatalogScreen/>}
         {screen==="envanter"&&<EnvanterScreen
           showToast={showToast}
           envanter={envanter}
-          onEkle={async(e)=>{try{await envanterHinzufuegen(e);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onEkle={async(e)=>{try{const neu=await envanterHinzufuegen(e);if(neu&&neu[0])setEnvanter(p=>[neu[0],...p]);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
           onGuncelle={async(e)=>{try{await envanterAktualisieren(e);showToast("Güncellendi!");}catch(err){showToast("Hata","err");}}}
           onSil={async(id)=>{try{await envanterLoeschen(id);showToast("Silindi.");}catch(err){showToast("Hata","err");}}}
         />}
@@ -2122,7 +2130,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
   );
 }
 
-function NeuKundeForm({onSave,onAbbruch,showToast}){
+function NeuKundeForm({onSave,onAbbruch,showToast,kunden}){
   const [form,setForm]=useState({vorname:"",nachname:"",email:"",telefon:"",whatsapp:"",strasse:"",hausnr:"",plz:"",ort:"",land:"Deutschland",notiz:""});
   const [dsgvoOk,setDsgvoOk]=useState(false);
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -2890,6 +2898,15 @@ function OfflineBanner(){
 function Toast({msg,art}){return(<div style={{position:"fixed",bottom:24,right:24,background:art==="ok"?COLORS.green:COLORS.red,color:"#fff",borderRadius:10,padding:"12px 20px",fontWeight:600,fontSize:13,zIndex:999,boxShadow:"0 4px 20px #0008"}}>{art==="ok"?"✓":"✕"} {msg}</div>);}
 
 const inputStyle={background:"#ffffff",border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 14px",color:COLORS.text,fontSize:14,width:"100%",boxSizing:"border-box",outline:"none",fontFamily:"'IBM Plex Sans',sans-serif"};
+
+// ─── ORTAK STYLE SABİTLERİ ───────────────────────────────────────────────────
+const txtMuted12={color:COLORS.muted,fontSize:12};
+const txtMuted13={color:COLORS.muted,fontSize:13};
+const txtMuted11={color:COLORS.muted,fontSize:11};
+const flexGap8={display:"flex",gap:8,alignItems:"center"};
+const flexGap12={display:"flex",gap:12,alignItems:"center"};
+const sectionCard={background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16};
+const rowCard={background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px"};
 const btnPrimary={background:COLORS.accent,color:"#ffffff",border:"none",borderRadius:8,padding:"10px 20px",fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const btnSecondary={background:"#ffffff",color:COLORS.text,border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 16px",fontWeight:500,fontSize:14,cursor:"pointer",fontFamily:"'IBM Plex Sans',sans-serif",whiteSpace:"nowrap"};
 const labelStyle={display:"block",color:COLORS.muted,fontSize:11,fontWeight:600,letterSpacing:.5,marginBottom:6};
