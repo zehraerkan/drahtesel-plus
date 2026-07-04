@@ -246,7 +246,7 @@ const STATUS = {
   "Neu":        {farbe:COLORS.blue,  bg:"#60a5fa22",label:"🆕 Neu"},
   "In Arbeit":  {farbe:COLORS.purple,bg:"#a78bfa22",label:"🔧 In Arbeit"},
   "Fertig":     {farbe:COLORS.green, bg:"#4ade8022",label:"✓ Fertig"},
-  "Abgerechnet":{farbe:COLORS.accent,bg:"#1a56a022",label:"🧾 Abgerechnet"},
+  "Abgerechnet":{farbe:COLORS.accent,bg:"#e8b84b22",label:"🧾 Abgerechnet"},
   "Abgeholt":   {farbe:"#6b7280",   bg:"#6b728022",label:"📦 Abgeholt"},
 };
 const LEISTUNGSKATALOG = [
@@ -413,6 +413,18 @@ function getFirma(){
 }
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
+
+function formatDatum(str){
+  if(!str)return"";
+  const d=new Date(str);
+  if(isNaN(d))return str;
+  const now=new Date();
+  const diff=Math.floor((now-d)/86400000);
+  if(diff===0)return"Heute";
+  if(diff===1)return"Gestern";
+  if(diff<7)return["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()];
+  return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"});
+}
 
 function formatTelefon(raw){
   if(!raw||!raw.trim())return "";
@@ -663,13 +675,14 @@ export default function DrahteselApp() {
     await dbUpdate("rechnungen",id,{data});
     setRechnungen(p=>p.map(x=>x.id===id?r:x));
   }
-  async function rechnungHinzufuegen(r) {
+  async function rechnungHinzufuegen(r, abgeholt=false) {
     const id=genId(); const erstellt=heute();
     const {kundeId,auftragId,...data}=r;
     const neu={...r,id,erstellt};
     await dbInsert("rechnungen",{id,kunde_id:kundeId,auftrag_id:auftragId,erstellt,data});
     setRechnungen(p=>[neu,...p]);
-    await auftragStatusAendern(auftragId,"Abgerechnet");
+    const zielStatus = abgeholt ? "Abgeholt" : "Abgerechnet";
+    await auftragStatusAendern(auftragId, zielStatus);
     return neu;
   }
 
@@ -818,7 +831,7 @@ export default function DrahteselApp() {
           onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);setAuftraege(p=>p.map(x=>x.id===a.id?{...x,...a}:x));showToast("Gespeichert!");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           onStatusChange={async(id,st)=>{try{await auftragStatusAendern(id,st);showToast(`Status: ${st}`);}catch(e){showToast("Fehler","err");}}}
           onNotizenChange={async(id,n)=>{try{await auftragNotizenAendern(id,n);}catch(e){showToast("Fehler","err");}}}
-          onRechnungErstellen={async(a)=>{
+          onRechnungErstellen={async(a,_zahlart,abgeholt=false)=>{
             try{
               const k=kunden.find(x=>x.id===a.kundeId)||{};
               const nr=naechsteNr(rechnungen,"nummer",1);
@@ -827,11 +840,12 @@ export default function DrahteselApp() {
                 positionen:a.positionen,brutto:a.brutto,netto:calcNetto(a.brutto),
                 mwst:calcMwst(a.brutto),bezahlung:a.bezahlung||"Bar",fahrradModell:a.fahrradModell,
                 kundeVorname:k.vorname,kundeNachname:k.nachname,kundeKdNr:k.kdNr,
-              });
+              },abgeholt);
               setSelRechnung(neu);showToast("Rechnung erstellt!");setScreen("rechnung-detail");
             }catch(e){showToast("Fehler: "+e.message,"err");}
           }}
           onAbbruch={()=>setScreen(prevScreen||"auftraege")}
+          onKundeDetail={selKunde?()=>{setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${selAuftrag?.nummer}`},{screen:"kunde-detail",label:`${selKunde.nachname}`}]);setScreen("kunde-detail");}:null}
           showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="rechnungen"&&<AlleRechnungen rechnungen={rechnungen} kunden={kunden}
           onDetail={(r,k)=>{setSelRechnung(r);setSelKunde(k);setScreen("rechnung-detail");}}/>}
@@ -1084,7 +1098,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
             {auftraege.filter(a=>a.status==="Fertig").length} Auftrag wartet auf Abrechnung
           </span>
           <button onClick={()=>setFilter("Fertig")}
-            style={{marginLeft:"auto",...btnSecondary,fontSize:12,padding:"4px 12px",color:COLORS.green,borderColor:COLORS.green}}>
+            style={{marginLeft:"auto",...btnSecondary,fontSize:12,padding:"8px 14px",color:COLORS.green,borderColor:COLORS.green}}>
             Anzeigen →
           </button>
         </div>
@@ -1120,7 +1134,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
                     👤
                   </button>}
                 </div>
-                <div style={{color:COLORS.muted,fontSize:12}}>{a.fahrradModell} · {a.erstellt}</div>
+                <div style={{color:COLORS.muted,fontSize:12}}>{a.fahrradModell} · {formatDatum(a.erstellt)}</div>
                 {a.kundenbeschwerden&&<div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{a.kundenbeschwerden.slice(0,70)}{a.kundenbeschwerden.length>70?"…":""}</div>}
               </div>
               <div style={{textAlign:"right"}}>
@@ -1228,7 +1242,7 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch,i
             <div key={g.gruppe} style={{marginBottom:12}}>
               <div style={{color:COLORS.accent,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:6}}>{g.gruppe.toUpperCase()}</div>
               {g.items.map(item=>(
-                <div key={item.name} onClick={()=>addPos(item.name,item.preis,1)}
+                <div key={item.name} onClick={()=>{addPos(item.name,item.preis,1);setKatalogOffen&&setKatalogOffen(false);}}
                   style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",borderRadius:6,cursor:"pointer",fontSize:13}}
                   onMouseEnter={e=>{e.currentTarget.style.background=`${COLORS.accent}22`;}} onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
                   <span>{item.name}</span><span style={{color:COLORS.accent,fontFamily:"'IBM Plex Mono'"}}>{formatEuro(item.preis)}</span>
@@ -1272,7 +1286,9 @@ function WaMessageEditor({template,kunde,auftrag}){
         rows={5}
         style={{...inputStyle,resize:"vertical",fontSize:13,lineHeight:1.6,marginBottom:12}}
       />
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <button onClick={()=>{try{navigator.clipboard.writeText(msg);}catch(e){const t=document.createElement("textarea");t.value=msg;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);}}}
+          style={{...btnSecondary,fontSize:12,padding:"8px 14px"}}>📋 Kopyala</button>
         {kunde.whatsapp&&(
           <a href={`https://wa.me/${(kunde.whatsapp||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`}
             target="_blank" rel="noopener noreferrer"
@@ -1295,11 +1311,12 @@ function WaMessageEditor({template,kunde,auftrag}){
   );
 }
 
-function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm,isMobile}){
+function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm,isMobile,onKundeDetail}){
   const [notizen,setNotizen]=useState((auftrag&&auftrag.notizen)||"");
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
   const [zahlungsart,setZahlungsart]=useState("Bar");
+  const [direktAbgeholt,setDirektAbgeholt]=useState(true);
   const [posEditModus,setPosEditModus]=useState(false);
   const [editPositionen,setEditPositionen]=useState((auftrag&&auftrag.positionen)||[]);
   const [posKatalogOffen,setPosKatalogOffen]=useState(false);
@@ -1340,7 +1357,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
         <div>
           <h2 style={{fontSize:22,fontWeight:700,marginBottom:2}}>Arbeitsauftrag #{auftrag.nummer}</h2>
-          <div style={{color:COLORS.muted,fontSize:13}}>Erstellt: {auftrag.erstellt} · {auftrag.kundeNachname}, {auftrag.kundeVorname}</div>
+          <div style={{color:COLORS.muted,fontSize:13,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>Erstellt: {formatDatum(auftrag.erstellt)} · {auftrag.kundeNachname}, {auftrag.kundeVorname}{onKundeDetail&&<button onClick={onKundeDetail} style={{background:"transparent",border:"none",color:COLORS.accent,cursor:"pointer",fontSize:12,padding:"2px 6px",textDecoration:"underline"}}>👤 Profil</button>}</div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnSecondary}>🖨️ Drucken</button>
@@ -1355,34 +1372,85 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       {/* STATUS FLOW */}
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 20px",marginBottom:16}}>
         <div style={{fontWeight:600,marginBottom:12,fontSize:13,color:COLORS.muted,letterSpacing:.5}}>STATUS</div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          {statusFlow.map((s,i)=>{
-            const isAktiv=auftrag.status===s;
-            const currentIdx=statusFlow.indexOf(auftrag.status);
-            const isErreicht=currentIdx>=i;
-            const sCol=STATUS[s];
-            // Abgerechnet'e manuel tıklanamaz
-            const clickable=s!=="Abgerechnet";
-            // Abgerechnet veya Abgeholt durumunda sadece ilgili butonlar görünsün
-            if(istAbgerechnet&&s!=="Abgerechnet"&&s!=="Abgeholt") return null;
-            return(<div key={s} style={{display:"flex",alignItems:"center",gap:8}}>
-              <button
-                onClick={()=>clickable&&onStatusChange(auftrag.id,s)}
-                style={{padding:"6px 16px",borderRadius:20,
-                  border:`2px solid ${isAktiv?sCol.farbe:isErreicht?sCol.farbe+"66":COLORS.border}`,
-                  background:isAktiv?sCol.bg:"transparent",
-                  color:isAktiv?sCol.farbe:isErreicht?sCol.farbe+"88":COLORS.muted,
-                  cursor:clickable?"pointer":"default",
-                  fontSize:12,fontWeight:isAktiv?700:500,transition:"all .15s"}}>
-                {sCol.label}
-              </button>
-              {!istAbgerechnet&&i<statusFlow.length-1&&<span style={{color:COLORS.border}}>→</span>}
-            </div>);
-          })}
-          {auftrag.status==="Fertig"&&(
-            <button onClick={()=>setZahlungModal(true)} style={{...btnPrimary,marginLeft:8,padding:"6px 18px",fontSize:13}}>🧾 Rechnung erstellen</button>
-          )}
-        </div>
+
+        {/* Normal akış: Neu → In Arbeit → Fertig */}
+        {!istAbgerechnet&&(
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+            {["Neu","In Arbeit","Fertig"].map((s,i)=>{
+              const isAktiv=auftrag.status===s;
+              const currentIdx=["Neu","In Arbeit","Fertig"].indexOf(auftrag.status);
+              const isErreicht=currentIdx>=i;
+              const sCol=STATUS[s];
+              return(<div key={s} style={{display:"flex",alignItems:"center",gap:8}}>
+                <button onClick={()=>onStatusChange(auftrag.id,s)}
+                  style={{padding:"8px 16px",borderRadius:20,
+                    border:`2px solid ${isAktiv?sCol.farbe:isErreicht?sCol.farbe+"66":COLORS.border}`,
+                    background:isAktiv?sCol.bg:"transparent",
+                    color:isAktiv?sCol.farbe:isErreicht?sCol.farbe+"88":COLORS.muted,
+                    cursor:"pointer",fontSize:12,fontWeight:isAktiv?700:500,transition:"all .15s"}}>
+                  {sCol.label}
+                </button>
+                {i<2&&<span style={{color:COLORS.border}}>→</span>}
+              </div>);
+            })}
+
+            {/* Fertig'de: Rechnung erstellen butonu */}
+            {auftrag.status==="Fertig"&&(
+              <div style={{display:"flex",gap:8,marginLeft:8,flexWrap:"wrap"}}>
+                <button onClick={()=>setZahlungModal(true)}
+                  style={{...btnPrimary,padding:"8px 18px",fontSize:13}}>
+                  🧾 Rechnung + Abgeholt
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Abgerechnet veya Abgeholt durumu */}
+        {istAbgerechnet&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{padding:"8px 16px",borderRadius:20,
+                border:`2px solid ${auftrag.status==="Abgeholt"?"#6b7280":COLORS.accent}`,
+                background:auftrag.status==="Abgeholt"?"#6b728022":`${COLORS.accent}22`,
+                color:auftrag.status==="Abgeholt"?"#6b7280":COLORS.accent,
+                fontSize:12,fontWeight:700}}>
+                {STATUS[auftrag.status]?.label}
+              </div>
+              {auftrag.status==="Abgerechnet"&&(
+                <button onClick={()=>showConfirm(
+                  "Bisiklet teslim alındı olarak işaretlensin mi?",
+                  ()=>onStatusChange(auftrag.id,"Abgeholt"),
+                  {icon:"📦",okLabel:"Abgeholt",okColor:COLORS.green})}
+                  style={{...btnPrimary,padding:"8px 20px",fontSize:13,background:COLORS.green}}>
+                  📦 Abgeholt markieren
+                </button>
+              )}
+            </div>
+
+            {/* Geri alma — hata durumu için */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {auftrag.status==="Abgeholt"&&(
+                <button onClick={()=>showConfirm(
+                  "Abgeholt-Status rückgängig machen?",
+                  ()=>onStatusChange(auftrag.id,"Abgerechnet"),
+                  {icon:"↩️",okLabel:"Rückgängig",okColor:COLORS.orange})}
+                  style={{...btnSecondary,fontSize:12,color:COLORS.orange,borderColor:COLORS.orange,padding:"5px 12px"}}>
+                  ↩️ Rückgängig
+                </button>
+              )}
+              {auftrag.status==="Abgerechnet"&&(
+                <button onClick={()=>showConfirm(
+                  "Auftrag auf 'Fertig' zurücksetzen?",
+                  ()=>onStatusChange(auftrag.id,"Fertig"),
+                  {icon:"↩️",okLabel:"Zurücksetzen",okColor:COLORS.orange})}
+                  style={{...btnSecondary,fontSize:12,color:COLORS.orange,borderColor:COLORS.orange,padding:"5px 12px"}}>
+                  ↩️ Zurück zu Fertig
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* WHATSAPP ŞABLONLARI */}
@@ -1483,7 +1551,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
                     <div key={g.gruppe} style={{marginBottom:10}}>
                       <div style={{color:COLORS.accent,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:4}}>{g.gruppe.toUpperCase()}</div>
                       {g.items.map(item=>(
-                        <div key={item.name} onClick={()=>addPosEdit(item.name,item.preis,1)}
+                        <div key={item.name} onClick={()=>{addPosEdit(item.name,item.preis,1);setPosKatalogOffen(false);}}
                           style={{display:"flex",justifyContent:"space-between",padding:"5px 8px",borderRadius:6,cursor:"pointer",fontSize:12}}
                           onMouseEnter={e=>{e.currentTarget.style.background=`${COLORS.accent}22`;}}
                           onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}>
@@ -1618,9 +1686,13 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
                 </button>
               ))}
             </div>
+            <label style={{display:"flex",alignItems:"center",gap:10,margin:"4px 0 12px",cursor:"pointer",fontSize:13,padding:"10px 14px",background:`${COLORS.green}11`,borderRadius:8,border:`1px solid ${COLORS.green}44`}}>
+              <input type="checkbox" checked={direktAbgeholt} onChange={e=>setDirektAbgeholt(e.target.checked)} style={{width:18,height:18,accentColor:COLORS.green,cursor:"pointer"}}/>
+              <span>📦 Direkt als <strong>Abgeholt</strong> markieren</span>
+            </label>
             <div style={{display:"flex",gap:12}}>
               <button onClick={()=>setZahlungModal(false)} style={{...btnSecondary,flex:1}}>Abbrechen</button>
-              <button onClick={()=>{setZahlungModal(false);onRechnungErstellen({...auftrag,bezahlung:zahlungsart});}} style={{...btnPrimary,flex:2}}>✅ Rechnung erstellen</button>
+              <button onClick={()=>{setZahlungModal(false);onRechnungErstellen({...auftrag,bezahlung:zahlungsart},zahlungsart,direktAbgeholt);}} style={{...btnPrimary,flex:2}}>✅ Rechnung erstellen</button>
             </div>
           </div>
         </div>
@@ -1931,17 +2003,18 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
           const kdF=auftraege.filter(a=>a.kundeId===k.id&&a.status==="Fertig");
           const initials=((k.vorname||"?")[0]+(k.nachname||" ")[0]).toUpperCase();
           return(
-            <div key={k.id} onClick={()=>onWaehle(k)}
+            <div key={k.id}
               style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"11px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"all .15s"}}
               onMouseEnter={e=>{e.currentTarget.style.borderColor=COLORS.accent;e.currentTarget.style.background="#ddeef9";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor=COLORS.border;e.currentTarget.style.background=COLORS.card;}}>
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=COLORS.border;e.currentTarget.style.background=COLORS.card;}}
+              onClick={()=>onWaehle(k)}>
               <div style={{width:40,height:40,borderRadius:"50%",background:COLORS.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:15,color:"#fff",flexShrink:0}}>
                 {initials}
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:600,fontSize:14,marginBottom:3}}>{k.nachname}, {k.vorname}</div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-                  {k.telefon&&<span style={{color:COLORS.muted,fontSize:12}}>📞 {k.telefon}</span>}
+                  {k.telefon&&<a href={`tel:${k.telefon}`} onClick={e=>e.stopPropagation()} style={{color:COLORS.accent,fontSize:12,textDecoration:"none",fontWeight:500}}>📞 {k.telefon}</a>}
                   {(bisikletler||[]).filter(b=>b.kundeId===k.id).slice(0,2).map(b=>(
                     <span key={b.id} style={{background:`${COLORS.teal}22`,color:COLORS.teal,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:500,whiteSpace:"nowrap"}}>
                       🚲 {b.modell||b.marke}
@@ -2120,7 +2193,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
           {(rechnungen||[]).map(r=>(
             <div key={r.id} onClick={()=>onRechnung(r)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}
               onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
-              <div><span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:13}}>Rg. {r.nummer}</span><span style={{color:COLORS.muted,fontSize:13,marginLeft:12}}>{r.erstellt}</span></div>
+              <div><span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:13}}>Rg. {r.nummer}</span><span style={{color:COLORS.muted,fontSize:13,marginLeft:12}}>{formatDatum(r.erstellt)}</span></div>
               <span style={{fontWeight:600,color:COLORS.green,fontFamily:"'IBM Plex Mono'"}}>{formatEuro(r.brutto||0)}</span>
             </div>
           ))}
@@ -2462,7 +2535,7 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
           </div>
           <div style={{display:"flex",gap:12,alignItems:"center",flex:1,minWidth:0}}>
             <span style={{color:COLORS.green,fontFamily:"'IBM Plex Mono'",fontSize:13}}>{formatEuro(r.brutto||0)}</span>
-            <span style={{color:COLORS.muted,fontSize:12}}>{r.erstellt}</span>
+            <span style={{color:COLORS.muted,fontSize:12}}>{formatDatum(r.erstellt)}</span>
           </div>
         </div>
       );})}
@@ -3295,7 +3368,7 @@ function QuickAuftragScreen({kunden,bisikletler,onKundeWaehle,onNeuKunde,onAbbru
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:600,fontSize:14}}>{k.nachname}, {k.vorname}</div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:2}}>
-                  {k.telefon&&<span style={{color:COLORS.muted,fontSize:12}}>📞 {k.telefon}</span>}
+                  {k.telefon&&<a href={`tel:${k.telefon}`} onClick={e=>e.stopPropagation()} style={{color:COLORS.accent,fontSize:12,textDecoration:"none",fontWeight:500}}>📞 {k.telefon}</a>}
                   {kBisikletler.map(b=>(
                     <span key={b.id} style={{background:`${COLORS.teal}22`,color:COLORS.teal,borderRadius:10,padding:"1px 8px",fontSize:11}}>
                       🚲 {b.marke} {b.modell}
