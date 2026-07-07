@@ -414,23 +414,45 @@ function getFirma(){
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
 
+function parseDatum(str){
+  if(!str)return null;
+  // ISO format (2026-06-14 veya 2026-06-14T10:30:00)
+  if(/^\d{4}-\d{2}-\d{2}/.test(str)){
+    const d=new Date(str);
+    return isNaN(d)?null:d;
+  }
+  // Alman formatı: DD.MM.YYYY
+  const m=str.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if(m){
+    const d=new Date(+m[3],+m[2]-1,+m[1]);
+    return isNaN(d)?null:d;
+  }
+  const d=new Date(str);
+  return isNaN(d)?null:d;
+}
+
 function formatDatum(str){
   if(!str)return"";
-  const d=new Date(str);
-  if(isNaN(d))return str;
+  const d=parseDatum(str);
+  if(!d)return str;
   const now=new Date();
-  const diff=Math.floor((now-d)/86400000);
+  now.setHours(0,0,0,0);
+  const d0=new Date(d);
+  d0.setHours(0,0,0,0);
+  const diff=Math.floor((now-d0)/86400000);
   if(diff===0)return"Heute";
   if(diff===1)return"Gestern";
-  if(diff<7)return["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()];
+  if(diff>1&&diff<7)return["So","Mo","Di","Mi","Do","Fr","Sa"][d.getDay()];
   return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"});
 }
 
 function tageSeit(str){
-  if(!str)return 0;
-  const d=new Date(str);
-  if(isNaN(d))return 0;
-  return Math.floor((new Date()-d)/86400000);
+  const d=parseDatum(str);
+  if(!d)return 0;
+  const now=new Date();
+  now.setHours(0,0,0,0);
+  d.setHours(0,0,0,0);
+  return Math.floor((now-d)/86400000);
 }
 
 function formatTelefon(raw){
