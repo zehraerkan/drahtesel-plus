@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 // ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
 const SUPA_URL = "https://dtpjypraefamxgssklgv.supabase.co";
@@ -426,6 +426,13 @@ function formatDatum(str){
   return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"});
 }
 
+function tageSeit(str){
+  if(!str)return 0;
+  const d=new Date(str);
+  if(isNaN(d))return 0;
+  return Math.floor((new Date()-d)/86400000);
+}
+
 function formatTelefon(raw){
   if(!raw||!raw.trim())return "";
   var s=raw.trim();
@@ -603,6 +610,24 @@ export default function DrahteselApp() {
     setKunden(p=>p.map(x=>x.id===k.id?k:x));
   }
   async function kundeLoeschen(id) {
+    // DSGVO: müşteriye ait tüm fotoğrafları storage'dan temizle
+    try{
+      const kundeBisiklets=bisikletler.filter(b=>b.kundeId===id);
+      const kundeAuftraege=auftraege.filter(a=>a.kundeId===id);
+      const entities=[
+        {type:"kunde",id},
+        ...kundeBisiklets.map(b=>({type:"bisiklet",id:b.id})),
+        ...kundeAuftraege.map(a=>({type:"auftrag",id:a.id})),
+      ];
+      for(const e of entities){
+        try{
+          const fotos=await getFotos(e.type,e.id);
+          for(const f of fotos){
+            try{await deleteFoto(f.id,f.url);}catch{}
+          }
+        }catch{}
+      }
+    }catch{}
     await dbDelete("kunden",id);
     setKunden(p=>p.filter(x=>x.id!==id));
   }
@@ -638,9 +663,20 @@ export default function DrahteselApp() {
     setAuftraege(p=>p.map(x=>x.id===id?a:x));
   }
   async function auftragStatusAendern(id,status) {
-    await dbUpdate("auftraege",id,{status});
-    setAuftraege(p=>p.map(a=>a.id===id?{...a,status}:a));
-    setSelAuftrag(p=>p?{...p,status}:p);
+    const a=auftraege.find(x=>x.id===id);
+    const jetzt=new Date().toISOString();
+    // Status geçmişi — kim ne zaman değiştirdi
+    const verlauf=[...((a&&a.statusVerlauf)||[]),{status,zeit:jetzt,von:(benutzer&&benutzer.name)||"?"}];
+    const extra={statusVerlauf:verlauf};
+    if(status==="Fertig")extra.statusFertigSeit=jetzt;
+    if(a){
+      const {id:_,kundeId,bisikletId,status:__,erstellt,...data}=a;
+      try{await dbUpdate("auftraege",id,{status,data:{...data,...extra}});}catch{await dbUpdate("auftraege",id,{status});}
+    }else{
+      await dbUpdate("auftraege",id,{status});
+    }
+    setAuftraege(p=>p.map(x=>x.id===id?{...x,status,...extra}:x));
+    setSelAuftrag(p=>p?{...p,status,...extra}:p);
   }
   async function auftragNotizenAendern(id,notizen) {
     const a=auftraege.find(x=>x.id===id); if(!a)return;
@@ -747,6 +783,7 @@ export default function DrahteselApp() {
         transition:"margin-left .2s",
         minWidth:0,maxWidth:"100%",
         boxSizing:"border-box"}}>
+        <ErrorBoundary>
         {/* BREADCRUMB */}
         {breadcrumb.length>1&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:16,flexWrap:"wrap"}}>
@@ -872,6 +909,7 @@ export default function DrahteselApp() {
           onNeuKunde={()=>setScreen("neu-kunde")}
           onAbbruch={()=>setScreen("dashboard")}/>}
         {screen==="einstellungen"&&<EinstellungenScreen benutzer={benutzer} benutzerListe={benutzerListe} setBenutzerListe={setBenutzerListe} showToast={showToast} showConfirm={showConfirm}/>}
+      </ErrorBoundary>
       </main>
       {toast&&<Toast msg={toast.msg} art={toast.art}/>}
       <OfflineBanner/>
@@ -905,7 +943,7 @@ function LoginScreen({onLogin,onKundeLogin}){
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet"/>
       <div style={{textAlign:"center"}}>
         <img src={LOGO_SRC} alt="Drahtesel Plus" style={{width:130,height:130,objectFit:"contain",marginBottom:8}}/>
-        <div style={{fontWeight:700,fontSize:26,color:COLORS.accent,letterSpacing:2}}>DRAHTESEL PLUS</div>
+        <div style={{fontWeight:700,fontSize:24,color:COLORS.accent,letterSpacing:2}}>DRAHTESEL PLUS</div>
         <div style={{color:COLORS.muted,fontSize:12,letterSpacing:3,marginTop:4}}>WERKSTATT VERWALTUNG</div>
       </div>
       <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:360,display:"flex",flexDirection:"column",gap:16}}>
@@ -1010,7 +1048,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}
           style={{position:"absolute",top:8,right:12,background:"transparent",border:"none",
             color:COLORS.muted,fontSize:24,cursor:"pointer",lineHeight:1,padding:"2px 6px"}}>✕</button>}
         <img src={LOGO_SRC} alt="" style={{width:44,height:44,objectFit:"contain",marginBottom:4}}/>
-        <div style={{fontWeight:700,color:COLORS.accent,fontSize:15,letterSpacing:1}}>DRAHTESEL+</div>
+        <div style={{fontWeight:700,color:COLORS.accent,fontSize:14,letterSpacing:1}}>DRAHTESEL+</div>
         <div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{(benutzer&&benutzer.name)}</div>
       </div>
       <nav style={{flex:1,padding:"16px 0"}}>
@@ -1084,7 +1122,12 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,benutzer,setScreen}){
 }
 function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
   const [filter,setFilter]=useState("alle");
-  const gefiltert=useMemo(()=>[...auftraege].sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0)).filter(a=>filter==="alle"||a.status===filter),[auftraege,filter]);
+  const [suche,setSuche]=useState("");
+  const gefiltert=useMemo(()=>[...auftraege]
+    .sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0))
+    .filter(a=>filter==="alle"||a.status===filter)
+    .filter(a=>!suche||`${a.nummer} ${a.kundeNachname||""} ${a.kundeVorname||""} ${a.fahrradModell||""}`.toLowerCase().includes(suche.toLowerCase()))
+  ,[auftraege,filter,suche]);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -1103,6 +1146,13 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
           </button>
         </div>
       )}
+      <div style={{position:"relative",marginBottom:10}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:14,pointerEvents:"none"}}>🔍</span>
+        <input placeholder="Auftrag suchen (Nr, Name, Fahrrad)…" value={suche} onChange={e=>setSuche(e.target.value)}
+          style={{...inputStyle,paddingLeft:42}}/>
+        {suche&&<button onClick={()=>setSuche("")}
+          style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
+      </div>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         {["alle","Neu","In Arbeit","Fertig","Abgerechnet","Abgeholt"].map(s=>(
           <button key={s} onClick={()=>setFilter(s)}
@@ -1134,7 +1184,14 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
                     👤
                   </button>}
                 </div>
-                <div style={{color:COLORS.muted,fontSize:12}}>{a.fahrradModell} · {formatDatum(a.erstellt)}</div>
+                <div style={{color:COLORS.muted,fontSize:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <span>{a.fahrradModell} · {formatDatum(a.erstellt)}</span>
+                    {a.status==="Fertig"&&tageSeit(a.statusFertigSeit||a.erstellt)>=3&&(
+                      <span style={{background:"#fef3c7",color:"#92400e",borderRadius:8,padding:"1px 8px",fontSize:10,fontWeight:700}}>
+                        ⏳ {tageSeit(a.statusFertigSeit||a.erstellt)} Tage wartend
+                      </span>
+                    )}
+                  </div>
                 {a.kundenbeschwerden&&<div style={{color:COLORS.muted,fontSize:11,marginTop:2}}>{a.kundenbeschwerden.slice(0,70)}{a.kundenbeschwerden.length>70?"…":""}</div>}
               </div>
               <div style={{textAlign:"right"}}>
@@ -1153,6 +1210,7 @@ function AlleAuftraege({auftraege,kunden,onDetail,onKundeDetail}){
 
 // ─── NEU AUFTRAG FORM ─────────────────────────────────────────────────────────
 function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch,isMobile,showToast}){
+  const [saving,setSaving]=useState(false);
   const [form,setForm]=useState({
     fahrradModell:bisiklet?`${bisiklet.marke||""} ${bisiklet.modell||""}`.trim():"",
     bisikletId:(bisiklet&&bisiklet.id)||"",
@@ -1261,7 +1319,13 @@ function NeuAuftragForm({kunde,bisiklet,bisikletler,auftragNr,onSave,onAbbruch,i
       <div style={{marginBottom:20}}><label style={labelStyle}>Interne Notizen</label>
         <textarea placeholder="Werkstatt-Notizen …" value={form.notizen} onChange={e=>F("notizen",e.target.value)} style={{...inputStyle,height:60,resize:"vertical"}}/></div>
       <div style={{display:"flex",gap:12}}>
-        <button onClick={()=>{if(!form.fahrradModell){showToast("Bitte Fahrrad Modell eingeben.","err");return;}onSave({...form,nummer:auftragNr,brutto,netto:calcNetto(brutto),mwst:calcMwst(brutto)});}} style={btnPrimary}>✅ Auftrag erstellen</button>
+        <button disabled={saving} onClick={async()=>{
+          if(saving)return;
+          if(!form.fahrradModell){showToast("Bitte Fahrrad Modell eingeben.","err");return;}
+          setSaving(true);
+          try{await onSave({...form,nummer:auftragNr,brutto,netto:calcNetto(brutto),mwst:calcMwst(brutto)});}
+          finally{setSaving(false);}
+        }} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichert…":"✅ Auftrag erstellen"}</button>
         <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
       </div>
     </div>
@@ -1451,6 +1515,25 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             </div>
           </div>
         )}
+
+        {/* STATUS GEÇMİŞİ */}
+        {auftrag.statusVerlauf&&auftrag.statusVerlauf.length>0&&(
+          <details style={{marginTop:12}}>
+            <summary style={{cursor:"pointer",fontSize:12,color:COLORS.muted,userSelect:"none"}}>
+              🕐 Verlauf ({auftrag.statusVerlauf.length})
+            </summary>
+            <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
+              {[...auftrag.statusVerlauf].reverse().map((v,i)=>(
+                <div key={"vl"+i} style={{fontSize:12,color:COLORS.muted,display:"flex",gap:8,alignItems:"center"}}>
+                  <span style={{fontWeight:600,color:STATUS[v.status]?.farbe||COLORS.text}}>{STATUS[v.status]?.label||v.status}</span>
+                  <span>·</span>
+                  <span>{new Date(v.zeit).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+                  {v.von&&<span>· {v.von}</span>}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
 
       {/* WHATSAPP ŞABLONLARI */}
@@ -1510,7 +1593,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
               {(auftrag.positionen||[]).length>0&&(
                 <div style={{display:"flex",justifyContent:"flex-end",marginTop:8,gap:16,fontSize:13}}>
                   <span style={{color:COLORS.muted}}>Gesamt:</span>
-                  <span style={{fontFamily:"'IBM Plex Mono'",fontWeight:700,color:COLORS.accent,fontSize:15}}>{formatEuro((auftrag.positionen||[]).reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0))}</span>
+                  <span style={{fontFamily:"'IBM Plex Mono'",fontWeight:700,color:COLORS.accent,fontSize:14}}>{formatEuro((auftrag.positionen||[]).reduce((s,p)=>s+(p.einzelpreis||0)*(p.menge||1),0))}</span>
                 </div>
               )}
             </div>
@@ -1582,12 +1665,12 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           <div className="logo-row" style={{display:"flex",alignItems:"center",gap:10}}>
             <img src={LOGO_SRC} alt="" style={{width:48,height:48,objectFit:"contain"}}/>
             <div>
-              <div style={{fontWeight:700,fontSize:17,color:"#3d3db4",letterSpacing:1}}>{getFirma().zusatz||getFirma().name}</div>
+              <div style={{fontWeight:700,fontSize:16,color:"#3d3db4",letterSpacing:1}}>{getFirma().zusatz||getFirma().name}</div>
               <div style={{fontSize:11,color:"#666"}}>{getFirma().strasse} · {getFirma().plz} {getFirma().ort} · {getFirma().telefon}</div>
             </div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{fontSize:19,fontWeight:700}}>ARBEITSAUFTRAG</div>
+            <div style={{fontSize:18,fontWeight:700}}>ARBEITSAUFTRAG</div>
             <div style={{fontSize:13,color:"#555",marginTop:4}}>#{auftrag.nummer} · {auftrag.erstellt}</div>
             <span className="badge" style={{background:st.bg,color:st.farbe,marginTop:6}}>{st.label}</span>
           </div>
@@ -1770,7 +1853,7 @@ function FotoGalerie({entityType, entityId, maxFotos=5}){
               style={{width:90,height:90,objectFit:"cover",borderRadius:8,cursor:"pointer",border:`2px solid ${COLORS.border}`}}/>
             <button onClick={()=>setSilOnay(f)}
               style={{position:"absolute",top:-6,right:-6,background:COLORS.red,border:"none",borderRadius:"50%",width:20,height:20,cursor:"pointer",color:"white",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>×</button>
-            {f.local&&<div style={{position:"absolute",bottom:2,left:2,background:"#0008",borderRadius:3,padding:"1px 4px",fontSize:9,color:"#fff"}}>lokal</div>}
+            {f.local&&<div style={{position:"absolute",bottom:2,left:2,background:"#0008",borderRadius:3,padding:"1px 4px",fontSize:10,color:"#fff"}}>lokal</div>}
           </div>
         ))}
         {fotos.length<maxFotos&&(
@@ -1988,7 +2071,7 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
       </div>
 
       <div style={{position:"relative",marginBottom:14}}>
-        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:14,pointerEvents:"none"}}>🔍</span>
         <input placeholder="Name, E-Mail, Telefon oder Kundennr. …" value={suche} onChange={e=>setSuche(e.target.value)}
           style={{...inputStyle,paddingLeft:42,boxSizing:"border-box"}}/>
         {suche&&<button onClick={()=>setSuche("")}
@@ -2008,7 +2091,7 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
               onMouseEnter={e=>{e.currentTarget.style.borderColor=COLORS.accent;e.currentTarget.style.background="#ddeef9";}}
               onMouseLeave={e=>{e.currentTarget.style.borderColor=COLORS.border;e.currentTarget.style.background=COLORS.card;}}
               onClick={()=>onWaehle(k)}>
-              <div style={{width:40,height:40,borderRadius:"50%",background:COLORS.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:15,color:"#fff",flexShrink:0}}>
+              <div style={{width:40,height:40,borderRadius:"50%",background:COLORS.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"#fff",flexShrink:0}}>
                 {initials}
               </div>
               <div style={{flex:1,minWidth:0}}>
@@ -2037,7 +2120,7 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
         })}
         {!gefiltert.length&&(
           <div style={{textAlign:"center",padding:40,color:COLORS.muted}}>
-            <div style={{fontSize:36,marginBottom:10}}>👥</div>
+            <div style={{fontSize:32,marginBottom:10}}>👥</div>
             <div style={{fontSize:14}}>{suche?"Keine Kunden gefunden.":"Noch keine Kunden angelegt."}</div>
             {!suche&&<button onClick={onNeu} style={{...btnPrimary,marginTop:16}}>+ Ersten Kunden anlegen</button>}
           {!gefiltert.length&&kunden.length===0&&suche===""&&[1,2,3].map(i=><SkeletonCard key={"sk-k"+i} height={64}/>)}
@@ -2204,6 +2287,7 @@ Hinweis: Aufbewahrungspflicht für Rechnungen (10 Jahre) gemäß § 257 HGB!`,()
 }
 
 function NeuKundeForm({onSave,onAbbruch,showToast,kunden}){
+  const [saving,setSaving]=useState(false);
   const [form,setForm]=useState({vorname:"",nachname:"",email:"",telefon:"",whatsapp:"",strasse:"",hausnr:"",plz:"",ort:"",land:"Deutschland",notiz:""});
   const [dsgvoOk,setDsgvoOk]=useState(false);
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
@@ -2219,12 +2303,15 @@ function NeuKundeForm({onSave,onAbbruch,showToast,kunden}){
       </label>
     </div>
     <div style={{display:"flex",gap:12}}>
-      <button onClick={()=>{
+      <button disabled={saving} onClick={async()=>{
+        if(saving)return;
         if(!form.vorname||!form.nachname){showToast("Pflichtfelder ausfüllen!","err");return;}
         if(form.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)){showToast("Bitte gültige E-Mail-Adresse eingeben.","err");return;}
         if(!dsgvoOk){showToast("Bitte Datenschutzhinweis bestätigen.","err");return;}
-        onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
-      }} style={btnPrimary}>Speichern</button>
+        setSaving(true);
+        try{await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});}
+        finally{setSaving(false);}
+      }} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichert…":"Speichern"}</button>
       <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
     </div></div>);
 }
@@ -2350,7 +2437,7 @@ function RaporlamaScreen({auftraege,rechnungen,kunden}){
                   <div style={{position:"absolute",bottom:0,left:0,right:0,background:COLORS.accent,borderRadius:"4px 4px 0 0",height:`${Math.max((m.umsatz/maxUmsatz)*90,m.umsatz>0?8:2)}px`}}/>
                 </div>
                 <div style={{fontSize:10,color:COLORS.muted}}>{m.label}</div>
-                {m.anzahl>0&&<div style={{fontSize:9,color:COLORS.muted}}>{m.anzahl} Rg.</div>}
+                {m.anzahl>0&&<div style={{fontSize:10,color:COLORS.muted}}>{m.anzahl} Rg.</div>}
               </div>
             ))}
           </div>
@@ -2498,7 +2585,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
           {[{l:"Nettobetrag:",w:formatEuro(rechnung.netto||calcNetto(rechnung.brutto||0))},{l:"zzgl. 19% MwSt.:",w:formatEuro(rechnung.mwst||calcMwst(rechnung.brutto||0))}].map(z=>(
             <div key={z.l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:13,color:"#555"}}><span>{z.l}</span><span style={{fontFamily:"monospace"}}>{z.w}</span></div>
           ))}
-          <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:17,borderTop:"2px solid #111",paddingTop:8,marginTop:8}}><span>Gesamtbetrag:</span><span style={{fontFamily:"monospace"}}>{formatEuro(rechnung.brutto||0)}</span></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:16,borderTop:"2px solid #111",paddingTop:8,marginTop:8}}><span>Gesamtbetrag:</span><span style={{fontFamily:"monospace"}}>{formatEuro(rechnung.brutto||0)}</span></div>
         </div>
         <div style={{marginTop:20,fontSize:12,color:"#555"}}>Der Gesamtbetrag wurde mit <strong>{rechnung.bezahlung||"Bar"}</strong> bezahlt.<br/>Leistungsdatum ist der {rechnung.erstellt}.</div>
         <div style={{marginTop:14,padding:"10px 14px",background:"#f8f9fa",borderRadius:6,border:"1px solid #e0e0e0",fontSize:11,color:"#777",fontStyle:"italic"}}>
@@ -2907,6 +2994,38 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
 function InfoKarte({titel,children}){return(<div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:8}}><div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>{titel.toUpperCase()}</div>{children}</div>);}
 function InfoZeile({label,wert}){return(<div style={{display:"flex",gap:12,fontSize:13,marginBottom:6}}><span style={{color:COLORS.muted,minWidth:80}}>{label}:</span><span>{wert}</span></div>);}
 
+// ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props){
+    super(props);
+    this.state={hasError:false,error:null};
+  }
+  static getDerivedStateFromError(error){
+    return {hasError:true,error};
+  }
+  componentDidCatch(error,info){
+    console.error("ErrorBoundary:",error,info);
+  }
+  render(){
+    if(this.state.hasError){
+      return(
+        <div style={{minHeight:"60vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24}}>
+          <div style={{fontSize:48}}>⚠️</div>
+          <div style={{fontWeight:700,fontSize:18,color:COLORS.text}}>Etwas ist schiefgelaufen</div>
+          <div style={{color:COLORS.muted,fontSize:13,textAlign:"center",maxWidth:400}}>
+            Ein unerwarteter Fehler ist aufgetreten. Ihre Daten sind sicher.
+          </div>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"10px 24px",borderRadius:8,border:"none",background:COLORS.accent,color:"#fff",fontWeight:600,cursor:"pointer",fontSize:14}}>
+            🔄 Neu laden
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── CONFIRM MODAL ────────────────────────────────────────────────────────────
 function ConfirmModal({msg,onOk,onCancel,okLabel="Löschen",okColor=null,icon="⚠️"}){
   return(
@@ -2914,7 +3033,7 @@ function ConfirmModal({msg,onOk,onCancel,okLabel="Löschen",okColor=null,icon="�
       onClick={onCancel}>
       <div onClick={e=>e.stopPropagation()} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:360,boxShadow:"0 8px 40px #0004"}}>
         <div style={{fontSize:32,textAlign:"center",marginBottom:12}}>{icon}</div>
-        <div style={{fontWeight:600,fontSize:15,textAlign:"center",marginBottom:20,lineHeight:1.5,color:COLORS.text}}>{msg}</div>
+        <div style={{fontWeight:600,fontSize:14,textAlign:"center",marginBottom:20,lineHeight:1.5,color:COLORS.text}}>{msg}</div>
         <div style={{display:"flex",gap:10}}>
           <button onClick={onCancel} style={{...btnSecondary,flex:1}}>Abbrechen</button>
           <button onClick={onOk} style={{...btnPrimary,flex:1,background:okColor||COLORS.red,color:"#fff"}}>{okLabel}</button>
@@ -3104,7 +3223,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                   <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.muted,fontSize:12,minWidth:28}}>#{idx+1}</span>
-                  <span style={{fontWeight:700,fontSize:15,textDecoration:isSatildi?"line-through":"none"}}>{item.marke} {item.modell}</span>
+                  <span style={{fontWeight:700,fontSize:14,textDecoration:isSatildi?"line-through":"none"}}>{item.marke} {item.modell}</span>
                   <span style={{background:dc.bg,color:dc.farbe,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:600}}>{dc.label}</span>
                 </div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
@@ -3340,7 +3459,7 @@ function QuickAuftragScreen({kunden,bisikletler,onKundeWaehle,onNeuKunde,onAbbru
       <p style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Zuerst Kunden auswählen oder neu anlegen.</p>
 
       <div style={{position:"relative",marginBottom:12}}>
-        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:14,pointerEvents:"none"}}>🔍</span>
         <input autoFocus placeholder="Name oder Kundennr. suchen …" value={suche} onChange={e=>setSuche(e.target.value)}
           style={{...inputStyle,paddingLeft:42,boxSizing:"border-box"}}/>
         {suche&&<button onClick={()=>setSuche("")}
