@@ -3204,7 +3204,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil,showToast,showConfirm}
     onSave={async(e)=>{await onEkle(e);setAnsicht("liste");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
-  if(ansicht==="detail"&&selItem) return <EnvanterDetail showConfirm={showConfirm}
+  if(ansicht==="detail"&&selItem) return <EnvanterDetail showConfirm={showConfirm} showToast={showToast}
     item={selItem}
     onGuncelle={async(e)=>{await onGuncelle(e);setSelItem(e);}}
     onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
@@ -3250,7 +3250,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil,showToast,showConfirm}
       {/* BİSİKLET LİSTESİ */}
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {gefiltert.map((item,idx)=>{
-          const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Mevcut"];
+          const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Im Laden"];
           const isSatildi=item.durum==="Satıldı";
           return(
             <div key={item.id} onClick={()=>{setSelItem(item);setAnsicht("detail");}}
@@ -3411,12 +3411,12 @@ function EnvanterForm({item,onSave,onAbbruch,showToast}){
 }
 
 // ─── ENVANTER DETAIL ──────────────────────────────────────────────────────────
-function EnvanterDetail({item,onGuncelle,onSil,onAbbruch,showConfirm}){
+function EnvanterDetail({item,onGuncelle,onSil,onAbbruch,showConfirm,showToast}){
   const [editModus,setEditModus]=useState(false);
-  const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Mevcut"];
+  const dc=DURUM_CONFIG[item.durum]||DURUM_CONFIG["Im Laden"];
 
 
-  if(editModus) return <EnvanterForm item={item}
+  if(editModus) return <EnvanterForm item={item} showToast={showToast}
     onSave={async(e)=>{await onGuncelle({...e,id:item.id,erstellt:item.erstellt});setEditModus(false);}}
     onAbbruch={()=>setEditModus(false)}/>;
 
