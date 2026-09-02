@@ -224,6 +224,7 @@ async function uploadFoto(file, entityType, entityId) {
   return url;
 }
 async function deleteFoto(fotoId, url) {
+  if (!url || typeof url !== "string") return;
   const path = url.split("/public/fotos/")[1];
   if (path) await fetch(`${SUPA_URL}/storage/v1/object/fotos/${path}`, { method: "DELETE", headers: { "apikey": SUPA_KEY, "Authorization": `Bearer ${_authToken||SUPA_KEY}` } });
   await dbDelete("fotos", fotoId);
@@ -475,7 +476,7 @@ function rowToBisiklet(r){return{...r.data,id:r.id,kundeId:r.kunde_id,erstellt:r
 function rowToAuftrag(r){return{...r.data,id:r.id,kundeId:r.kunde_id,bisikletId:r.bisiklet_id,status:r.status,erstellt:r.erstellt};}
 function rowToRechnung(r){return{...r.data,id:r.id,kundeId:r.kunde_id,auftragId:r.auftrag_id,erstellt:r.erstellt};}
 function rowToBenutzer(r){return{...r.data,id:r.id};}
-function rowToEnvanter(r){return{...r.data,id:r.id,durum:r.durum,erstellt:r.erstellt};}
+function rowToEnvanter(r){return{...r.data,id:r.id,durum:r.durum||(r.data&&r.data.durum)||"Im Laden",erstellt:r.erstellt};}
 
 // ─── HAUPTKOMPONENTE ─────────────────────────────────────────────────────────
 export default function DrahteselApp() {
@@ -710,13 +711,26 @@ export default function DrahteselApp() {
   // ── Envanter CRUD ─────────────────────────────────────────────────────────
   async function envanterHinzufuegen(e) {
     const id=genId(); const erstellt=heute();
-    const neu={...e,id,erstellt,durum:e.durum||"Im Laden"};
-    await dbInsert("envanter",{id,durum:neu.durum,erstellt,data:e});
+    const durum=e.durum||"Im Laden";
+    const neu={...e,id,erstellt,durum};
+    // durum hem ayrı kolonda hem data içinde — Supabase şemasına göre esnek
+    const dataObj={...e,durum};
+    try{
+      await dbInsert("envanter",{id,durum,erstellt,data:dataObj});
+    }catch(err){
+      // durum kolonu yoksa sadece data ile dene
+      await dbInsert("envanter",{id,erstellt,data:dataObj});
+    }
     setEnvanter(p=>[neu,...p]); return neu;
   }
   async function envanterAktualisieren(e) {
-    const {id,durum,erstellt,...data}=e;
-    await dbUpdate("envanter",id,{durum,data});
+    const {id,durum,erstellt,...rest}=e;
+    const data={...rest,durum};
+    try{
+      await dbUpdate("envanter",id,{durum,data});
+    }catch(err){
+      await dbUpdate("envanter",id,{data});
+    }
     setEnvanter(p=>p.map(x=>x.id===id?e:x));
   }
   async function envanterLoeschen(id) {
@@ -918,7 +932,7 @@ export default function DrahteselApp() {
         {screen==="envanter"&&<EnvanterScreen
           showToast={showToast}
           envanter={envanter}
-          onEkle={async(e)=>{try{const neu=await envanterHinzufuegen(e);if(neu&&neu[0])setEnvanter(p=>[neu[0],...p]);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onEkle={async(e)=>{try{await envanterHinzufuegen(e);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
           onGuncelle={async(e)=>{try{await envanterAktualisieren(e);showToast("Güncellendi!");}catch(err){showToast("Hata","err");}}}
           onSil={async(id)=>{try{await envanterLoeschen(id);showToast("Silindi.");}catch(err){showToast("Hata","err");}}}
         />}
@@ -2667,7 +2681,7 @@ function KatalogScreen(){
 
   function speichern(neuKatalog){
     setKatalog(neuKatalog);
-    localStorage.setItem("dp_katalog",JSON.stringify(neuKatalog));
+    try{localStorage.setItem("dp_katalog",JSON.stringify(neuKatalog));}catch{}
   }
   function gruppeHinzufuegen(){
     if(!neuGruppe.trim())return;
@@ -2800,12 +2814,12 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
       geschaeftsfuehrer:"Ömer COLAK",absenderEmail:""
     };}catch{return {};}
   });
-  const FF=(k,v)=>setFirma(p=>{const n={...p,[k]:v};localStorage.setItem("dp_firma",JSON.stringify(n));return n;});
+  const FF=(k,v)=>setFirma(p=>{const n={...p,[k]:v};try{localStorage.setItem("dp_firma",JSON.stringify(n));}catch{}return n;});
   const [waTab,setWaTab]=useState(false);
   const [twilioConfig,setTwilioConfig]=useState(()=>{
     try{return JSON.parse(localStorage.getItem("dp_twilio")||"{}");}catch{return {};}
   });
-  const TC=(k,v)=>setTwilioConfig(p=>{const n={...p,[k]:v};localStorage.setItem("dp_twilio",JSON.stringify(n));return n;});
+  const TC=(k,v)=>setTwilioConfig(p=>{const n={...p,[k]:v};try{localStorage.setItem("dp_twilio",JSON.stringify(n));}catch{}return n;});
 
   return(<div style={{maxWidth:600}}>
     <h2 style={{marginBottom:20}}>Einstellungen</h2>
@@ -3379,8 +3393,13 @@ function EnvanterForm({item,onSave,onAbbruch,showToast}){
           if(!form.marke||!form.modell){showToast("Marke und Modell sind Pflichtfelder.","err");return;}
           if(!form.typ){showToast("Bitte Fahrradtyp auswählen.","err");return;}
           setSaving(true);
-          await onSave({...form,durum:form.durum||"Mevcut"});
-          setSaving(false);
+          try{
+            await onSave({...form,durum:form.durum||"Im Laden"});
+          }catch(err){
+            showToast("Fehler: "+(err.message||"Speichern fehlgeschlagen"),"err");
+          }finally{
+            setSaving(false);
+          }
         }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>
           {saving?"Speichern...":isEdit?"💾 Aktualisieren":"🚲 Fahrrad hinzufügen"}
         </button>
