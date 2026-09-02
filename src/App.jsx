@@ -783,10 +783,31 @@ export default function DrahteselApp() {
 
   if(screen==="kunde-selbst") return <KundeSelbsteintragenScreen
     onSave={async(k)=>{
-      try{await kundeHinzufuegen(k);showToast("Vielen Dank! Ihre Daten wurden gespeichert.");}
-      catch(e){showToast("Fehler: "+e.message,"err");}
-      setScreen("login");
+      // Musteri modunda kunden state bos - Supabaseden gercek max kdNr cek
+      const id=genId(); const erstellt=heute();
+      let maxNr=0;
+      try{
+        const rows=await dbGet("kunden");
+        maxNr=rows.reduce((m,r)=>Math.max(m,parseInt((r.data&&r.data.kdNr)||0)||0),0);
+      }catch{}
+      const kdNr=String(maxNr+1).padStart(4,"0");
+      await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
+      setScreen("kunde-danke");
     }} onBack={()=>setScreen("login")}/>;
+
+  if(screen==="kunde-danke") return(
+    <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:20,padding:24}}>
+      <div style={{fontSize:64}}>✅</div>
+      <div style={{fontWeight:700,fontSize:24,color:COLORS.accent,textAlign:"center"}}>Vielen Dank!</div>
+      <div style={{color:COLORS.text,fontSize:16,textAlign:"center",maxWidth:340,lineHeight:1.6}}>
+        Ihre Daten wurden erfolgreich gespeichert. Sie können dieses Fenster jetzt schließen.
+      </div>
+      <div style={{color:COLORS.muted,fontSize:13,textAlign:"center"}}>Drahtesel Plus — Ihre Fahrradwerkstatt</div>
+      <button onClick={()=>setScreen("kunde-selbst")} style={{...btnSecondary,marginTop:8}}>
+        Weitere Person eintragen
+      </button>
+    </div>
+  );
 
   return (
     <div style={{display:"flex",height:"100vh",background:COLORS.bg,color:COLORS.text,fontFamily:"'IBM Plex Sans',sans-serif",position:"relative",overflow:"hidden",maxWidth:"100vw",width:"100%"}}>
@@ -2824,6 +2845,50 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
 
   return(<div style={{maxWidth:600}}>
     <h2 style={{marginBottom:20}}>Einstellungen</h2>
+
+    {/* QR KOD — MÜŞTERİ SELF-KAYIT */}
+    <div style={{background:COLORS.card,border:`2px solid ${COLORS.accent}44`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
+      <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>📱 KUNDEN-QR-CODE</div>
+      <div style={{color:COLORS.muted,fontSize:13,marginBottom:16,lineHeight:1.5}}>
+        Drucken Sie diesen QR-Code aus und hängen Sie ihn im Laden auf. Kunden können damit ihre Daten selbst eintragen.
+      </div>
+      {(()=>{
+        const kundeUrl=`${window.location.origin}${window.location.pathname}?mode=kunde`;
+        const qrData=encodeURIComponent(kundeUrl);
+        const qrUrl=`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${qrData}`;
+        const qrUrlBig=`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${qrData}`;
+        return(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+            <div style={{background:"#fff",padding:16,borderRadius:12,boxShadow:"0 2px 8px #0002"}}>
+              <img src={qrUrl} alt="Kunden QR-Code" style={{width:200,height:200,display:"block"}}/>
+            </div>
+            <div style={{fontSize:11,color:COLORS.muted,wordBreak:"break-all",textAlign:"center",maxWidth:320}}>{kundeUrl}</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
+              <button onClick={()=>{
+                const w=window.open("","_blank");
+                if(!w)return;
+                w.document.write(`<html><head><title>Kunden-QR-Code — Drahtesel Plus</title>
+                  <style>body{font-family:sans-serif;text-align:center;padding:40px;}
+                  h1{color:#1a56a0;}img{margin:24px 0;}p{color:#555;font-size:16px;max-width:400px;margin:8px auto;}</style>
+                  </head><body>
+                  <h1>🚲 Drahtesel Plus</h1>
+                  <p><strong>Werden Sie Kunde!</strong></p>
+                  <p>Scannen Sie den QR-Code mit Ihrer Handy-Kamera und tragen Sie Ihre Daten selbst ein.</p>
+                  <img src="${qrUrlBig}" width="300" height="300"/>
+                  <p style="font-size:13px;color:#888;">Schnell · Einfach · DSGVO-konform</p>
+                  </body></html>`);
+                w.document.close();
+                setTimeout(()=>{try{w.print();}catch{w.focus();}},400);
+              }} style={{...btnPrimary,fontSize:13,padding:"8px 18px"}}>🖨️ QR-Code drucken</button>
+              <button onClick={()=>{
+                try{navigator.clipboard.writeText(kundeUrl);showToast("Link kopiert!");}
+                catch{const t=document.createElement("textarea");t.value=kundeUrl;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);showToast("Link kopiert!");}
+              }} style={{...btnSecondary,fontSize:13,padding:"8px 18px"}}>📋 Link kopieren</button>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
 
     {/* FİRMA BİLGİLERİ */}
     <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
