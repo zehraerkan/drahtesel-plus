@@ -931,6 +931,7 @@ export default function DrahteselApp() {
         {screen==="katalog"&&<KatalogScreen/>}
         {screen==="envanter"&&<EnvanterScreen
           showToast={showToast}
+          showConfirm={showConfirm}
           envanter={envanter}
           onEkle={async(e)=>{try{await envanterHinzufuegen(e);showToast("Bisiklet eklendi!");}catch(err){showToast("Hata: "+err.message,"err");}}}
           onGuncelle={async(e)=>{try{await envanterAktualisieren(e);showToast("Güncellendi!");}catch(err){showToast("Hata","err");}}}
@@ -3151,7 +3152,7 @@ const SCHALTUNG_OPTIONEN = ["Keine","Shimano","SRAM","Campagnolo","Sturmey-Arche
 const BREMS_OPTIONEN = ["Felgenbremse","Scheibenbremse (mechanisch)","Scheibenbremse (hydraulisch)","Rücktrittbremse","V-Brake","Cantilever","Andere"];
 const RAHMEN_GROESSEN = ['49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '62', '63', '64', '65', '66', 'Universalgröße'];
 
-function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
+function EnvanterScreen({envanter,onEkle,onGuncelle,onSil,showToast,showConfirm}){
   const [ansicht,setAnsicht]=useState("liste"); // liste | neu | detail
   const [selItem,setSelItem]=useState(null);
   const [filterDurum,setFilterDurum]=useState("alle");
@@ -3203,7 +3204,7 @@ function EnvanterScreen({envanter,onEkle,onGuncelle,onSil}){
     onSave={async(e)=>{await onEkle(e);setAnsicht("liste");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
-  if(ansicht==="detail"&&selItem) return <EnvanterDetail
+  if(ansicht==="detail"&&selItem) return <EnvanterDetail showConfirm={showConfirm}
     item={selItem}
     onGuncelle={async(e)=>{await onGuncelle(e);setSelItem(e);}}
     onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
