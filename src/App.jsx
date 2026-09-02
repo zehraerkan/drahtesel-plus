@@ -1031,20 +1031,20 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
           <input placeholder="Vorname *" value={form.vorname} onChange={e=>F("vorname",e.target.value)} style={inputStyle}/>
           <input placeholder="Nachname *" value={form.nachname} onChange={e=>F("nachname",e.target.value)} style={inputStyle}/>
         </div>
-        <input placeholder="E-Mail *" value={form.email} onChange={e=>F("email",e.target.value)} style={{...inputStyle,marginBottom:12}}/>
+        <input placeholder="E-Mail (optional)" value={form.email} onChange={e=>F("email",e.target.value)} style={{...inputStyle,marginBottom:12}}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <input placeholder="Telefon / WhatsApp (z.B. 0176 12345678)" value={form.telefon}
+          <input placeholder="Telefon / WhatsApp *" value={form.telefon}
             onChange={e=>F("telefon",e.target.value)}
             onBlur={e=>{try{const f=formatTelefon(e.target.value);if(f){F("telefon",f);F("whatsapp",f);}}catch{}}}
             style={inputStyle} type="tel"/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:12,marginBottom:12}}>
-          <input placeholder="Straße *" value={form.strasse} onChange={e=>F("strasse",e.target.value)} style={inputStyle}/>
+          <input placeholder="Straße" value={form.strasse} onChange={e=>F("strasse",e.target.value)} style={inputStyle}/>
           <input placeholder="Nr." value={form.hausnr} onChange={e=>F("hausnr",e.target.value)} style={inputStyle}/>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 2fr 1fr",gap:12,marginBottom:12}}>
-          <input placeholder="PLZ *" value={form.plz} onChange={e=>F("plz",e.target.value)} style={inputStyle}/>
-          <input placeholder="Ort *" value={form.ort} onChange={e=>F("ort",e.target.value)} style={inputStyle}/>
+          <input placeholder="PLZ" value={form.plz} onChange={e=>F("plz",e.target.value)} style={inputStyle}/>
+          <input placeholder="Ort" value={form.ort} onChange={e=>F("ort",e.target.value)} style={inputStyle}/>
           <input placeholder="Land" value={form.land} onChange={e=>F("land",e.target.value)} style={inputStyle}/>
         </div>
         <textarea placeholder="Anmerkungen" value={form.notiz} onChange={e=>F("notiz",e.target.value)} style={{...inputStyle,height:60,resize:"vertical",marginBottom:16}}/>
@@ -1061,7 +1061,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
         <div style={{display:"flex",gap:12}}>
           <button onClick={onBack} style={btnSecondary}>Zurück</button>
           <button disabled={saving} onClick={async()=>{
-            if(!form.vorname||!form.nachname||!form.email){showToastGlobal("Pflichtfelder ausfüllen.","err");return;}
+            if(!form.vorname||!form.nachname||!form.telefon){showToastGlobal("Bitte Vorname, Nachname und Telefonnummer ausfüllen.","err");return;}
             const chk=document.getElementById("dsgvo-check");
             if(!chk||!chk.checked){showToastGlobal("Bitte stimmen Sie dem Datenschutzhinweis zu.","err");return;}
             setSaving(true);await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});setSaving(false);
