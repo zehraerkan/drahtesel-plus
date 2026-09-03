@@ -907,7 +907,8 @@ export default function DrahteselApp() {
           onDetail={(a)=>{setSelAuftrag(a);const k=kunden.find(k=>k.id===a.kundeId);setSelKunde(k||{id:a.kundeId,vorname:a.kundeVorname,nachname:a.kundeNachname,kdNr:a.kundeKdNr});setSelBisiklet(null);setPrevScreen("auftraege");setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${a.nummer}`}]);setScreen("auftrag-detail");}}
           onKundeDetail={(k)=>{if(k){setSelKunde(k);setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"kunde-detail",label:`${k.nachname}, ${k.vorname}`}]);setScreen("kunde-detail");}}}/>}
         {screen==="kunden"&&<KundenListe kunden={kunden} auftraege={auftraege} bisikletler={bisikletler}
-          onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}/>}
+          onWaehle={(k)=>{setSelKunde(k);setScreen("kunde-detail");}} onNeu={()=>setScreen("neu-kunde")}
+          onRefresh={async()=>{await ladeAlles();showToast("Aktualisiert!");}}/>}
         {screen==="kunde-detail"&&selKunde&&<KundeDetail
           kunde={selKunde}
           bisikletler={bisikletler.filter(b=>b.kundeId===selKunde.id)}
@@ -2158,7 +2159,7 @@ function BisikletDetail({bisiklet,auftraege,onNeuAuftrag,onAuftrag,onBearbeiten,
   );
 }
 
-function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
+function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu,onRefresh}){
   const [suche,setSuche]=useState("");
 
   const gefiltert=useMemo(()=>[...kunden]
@@ -2173,7 +2174,11 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu}){
           <h2 style={{fontSize:20,fontWeight:700}}>Kunden & Fahrräder</h2>
           <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{kunden.length} Kunden gesamt</div>
         </div>
-        <button onClick={onNeu} style={btnPrimary}>+ Neuer Kunde</button>
+        <div style={{display:"flex",gap:8}}>
+          {onRefresh&&<button onClick={onRefresh} title="Aktualisieren — neue Selbst-Anmeldungen laden"
+            style={{...btnSecondary,padding:"8px 14px"}}>🔄</button>}
+          <button onClick={onNeu} style={btnPrimary}>+ Neuer Kunde</button>
+        </div>
       </div>
 
       <div style={{position:"relative",marginBottom:14}}>
