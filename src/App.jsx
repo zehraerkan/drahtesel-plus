@@ -147,12 +147,13 @@ async function fetchWithAuth(url, options = {}) {
     if (refreshed) {
       options.headers = getHeaders(); // Yeni token ile header güncelle
       r = await fetch(url, options);
-    } else {
-      // Refresh de başarısız — kullanıcıyı login'e at
+    } else if(_authToken) {
+      // Sadece GİRİŞ YAPMIŞ kullanıcı için: refresh başarısız → login'e at
       _authToken = null;
       try { localStorage.removeItem("dp_auth_token"); localStorage.removeItem("dp_refresh_token"); } catch {}
       window.location.reload();
     }
+    // Anon (müşteri) modunda reload yapma — hata olduğu gibi döner
   }
   return r;
 }
@@ -169,6 +170,25 @@ async function dbInsert(table, row) {
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+// Müşteri self-kayıt — anon key ile DOĞRUDAN insert (fetchWithAuth KULLANMAZ, reload yapmaz)
+async function kundeSelbstInsert(row) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/kunden`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SUPA_KEY,
+      "Authorization": `Bearer ${SUPA_KEY}`,
+      "Prefer": "return=minimal",
+    },
+    body: JSON.stringify(row),
+  });
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error(txt || `HTTP ${r.status}`);
+  }
+  return true;
 }
 async function dbUpdate(table, id, row) {
   const r = await fetchWithAuth(`${SUPA_URL}/rest/v1/${table}?id=eq.${id}`, {
@@ -802,7 +822,7 @@ export default function DrahteselApp() {
         const d=new Date();
         kdNr="9"+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0");
       }
-      await dbInsert("kunden",{id,erstellt,data:{...k,kdNr,selbstEintrag:true}});
+      await kundeSelbstInsert({id,erstellt,data:{...k,kdNr,selbstEintrag:true}});
       setScreen("kunde-danke");
     }} onBack={()=>setScreen("login")}/>;
 
