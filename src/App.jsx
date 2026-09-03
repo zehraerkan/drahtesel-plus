@@ -783,29 +783,51 @@ export default function DrahteselApp() {
 
   if(screen==="kunde-selbst") return <KundeSelbsteintragenScreen
     onSave={async(k)=>{
-      // Musteri modunda kunden state bos - Supabaseden gercek max kdNr cek
       const id=genId(); const erstellt=heute();
-      let maxNr=0;
+      // Musteri numarasi icin guvenli RPC fonksiyonu (anon erisimli)
+      let kdNr=null;
       try{
-        const rows=await dbGet("kunden");
-        maxNr=rows.reduce((m,r)=>Math.max(m,parseInt((r.data&&r.data.kdNr)||0)||0),0);
+        const r=await fetch(`${SUPA_URL}/rest/v1/rpc/naechste_kunden_nr`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":`Bearer ${SUPA_KEY}`},
+          body:"{}"
+        });
+        if(r.ok){
+          const val=await r.json();
+          if(val)kdNr=String(val).replace(/"/g,"");
+        }
       }catch{}
-      const kdNr=String(maxNr+1).padStart(4,"0");
-      await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
+      // RPC calismazsa: tarih-bazli benzersiz numara (sonda gorunur, admin duzeltir)
+      if(!kdNr){
+        const d=new Date();
+        kdNr="9"+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0")+String(d.getHours()).padStart(2,"0")+String(d.getMinutes()).padStart(2,"0");
+      }
+      await dbInsert("kunden",{id,erstellt,data:{...k,kdNr,selbstEintrag:true}});
       setScreen("kunde-danke");
     }} onBack={()=>setScreen("login")}/>;
 
   if(screen==="kunde-danke") return(
-    <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:20,padding:24}}>
-      <div style={{fontSize:64}}>✅</div>
-      <div style={{fontWeight:700,fontSize:24,color:COLORS.accent,textAlign:"center"}}>Vielen Dank!</div>
-      <div style={{color:COLORS.text,fontSize:16,textAlign:"center",maxWidth:340,lineHeight:1.6}}>
-        Ihre Daten wurden erfolgreich gespeichert. Sie können dieses Fenster jetzt schließen.
+    <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+      <style>{`@keyframes popIn{0%{transform:scale(0);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}`}</style>
+      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:20,padding:"40px 28px",width:"100%",maxWidth:400,textAlign:"center",boxShadow:"0 8px 40px #0002"}}>
+        <div style={{width:88,height:88,borderRadius:"50%",background:"#16a34a",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",animation:"popIn .5s ease-out"}}>
+          <span style={{fontSize:48,color:"#fff"}}>✓</span>
+        </div>
+        <div style={{fontWeight:700,fontSize:26,color:"#16a34a",marginBottom:12}}>Erfolgreich!</div>
+        <div style={{color:COLORS.text,fontSize:16,lineHeight:1.6,marginBottom:8}}>
+          Vielen Dank! Ihre Daten wurden <strong>erfolgreich gespeichert</strong>.
+        </div>
+        <div style={{color:COLORS.muted,fontSize:14,lineHeight:1.5,marginBottom:28}}>
+          Sie können dieses Fenster jetzt schließen. Wir freuen uns auf Ihren Besuch!
+        </div>
+        <img src={LOGO_SRC} alt="" style={{width:50,height:50,objectFit:"contain",marginBottom:8}}/>
+        <div style={{color:COLORS.accent,fontWeight:700,fontSize:15,letterSpacing:1}}>DRAHTESEL PLUS</div>
+        <div style={{color:COLORS.muted,fontSize:12,marginBottom:24}}>Ihre Fahrradwerkstatt</div>
+        <button onClick={()=>setScreen("kunde-selbst")} style={{...btnSecondary,width:"100%"}}>
+          + Weitere Person eintragen
+        </button>
       </div>
-      <div style={{color:COLORS.muted,fontSize:13,textAlign:"center"}}>Drahtesel Plus — Ihre Fahrradwerkstatt</div>
-      <button onClick={()=>setScreen("kunde-selbst")} style={{...btnSecondary,marginTop:8}}>
-        Weitere Person eintragen
-      </button>
     </div>
   );
 
@@ -1064,8 +1086,14 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
             if(!form.vorname||!form.nachname||!form.telefon){showToastGlobal("Bitte Vorname, Nachname und Telefonnummer ausfüllen.","err");return;}
             const chk=document.getElementById("dsgvo-check");
             if(!chk||!chk.checked){showToastGlobal("Bitte stimmen Sie dem Datenschutzhinweis zu.","err");return;}
-            setSaving(true);await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});setSaving(false);
-          }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Speichern...":"Absenden"}</button>
+            setSaving(true);
+            try{
+              await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
+            }catch(err){
+              showToastGlobal("Fehler beim Speichern. Bitte erneut versuchen oder Personal ansprechen.","err");
+              setSaving(false);
+            }
+          }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Wird gespeichert...":"✓ Absenden"}</button>
         </div>
       </div>
     </div>
