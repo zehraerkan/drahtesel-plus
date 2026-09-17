@@ -3748,7 +3748,7 @@ function QuickAuftragScreen({kunden,bisikletler,onKundeWaehle,onNeuKunde,onAbbru
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FAHRRAD-VERMIETUNG (BİSİKLET KİRALAMA)
+// FAHRRAD-VERMIETUNG (BİSİKLET KİRALAMA) — çoklu bisiklet destekli
 // ═══════════════════════════════════════════════════════════════════════════════
 const VERMIET_STATUS = {
   "Aktiv":          {farbe:"#16a34a", bg:"#16a34a22", label:"🟢 Aktiv"},
@@ -3763,14 +3763,26 @@ function tageZwischen(von,bis){
   return Math.max(1,diff);
 }
 
+// Geriye dönük uyum: eski kayıtlar tek fahrrad/rahmennummer alanı kullanıyordu.
+// Yeni kayıtlar fahrraeder dizisi kullanır. Bu yardımcı ikisini de normalize eder.
+function getFahrraeder(v){
+  if(Array.isArray(v.fahrraeder)&&v.fahrraeder.length>0)return v.fahrraeder;
+  if(v.fahrrad)return [{fahrrad:v.fahrrad,rahmennummer:v.rahmennummer||"",zubehoer:v.zubehoer||"",zustand:v.zustand||""}];
+  return [];
+}
+function fahrraederKurz(v){
+  const arr=getFahrraeder(v);
+  if(arr.length===0)return "—";
+  if(arr.length===1)return arr[0].fahrrad;
+  return `${arr[0].fahrrad} +${arr.length-1}`;
+}
+
 function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showConfirm,firma,onEkle,onStatus,onGuncelle,onSil}){
-  const [ansicht,setAnsicht]=useState("liste"); // liste | neu | detail
+  const [ansicht,setAnsicht]=useState("liste");
   const [selV,setSelV]=useState(null);
   const [filter,setFilter]=useState("Aktiv");
   const [suche,setSuche]=useState("");
 
-  const heuteStr=heute();
-  // Überfällig kontrolü — bitiş tarihi geçmiş ama iade edilmemiş
   const gefiltert=useMemo(()=>{
     return [...vermietungen]
       .map(v=>{
@@ -3779,7 +3791,7 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
       })
       .sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0))
       .filter(v=>filter==="alle"||v.status===filter)
-      .filter(v=>!suche||`${v.nummer} ${v.mieterName||""} ${v.fahrrad||""}`.toLowerCase().includes(suche.toLowerCase()));
+      .filter(v=>!suche||`${v.nummer} ${v.mieterName||""} ${fahrraederKurz(v)}`.toLowerCase().includes(suche.toLowerCase()));
   },[vermietungen,filter,suche]);
 
   if(ansicht==="neu") return <VermietungForm
@@ -3805,7 +3817,6 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
         <button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Neue Vermietung</button>
       </div>
 
-      {/* Arama */}
       <div style={{position:"relative",marginBottom:10}}>
         <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
         <input placeholder="Suchen (Nr, Name, Fahrrad)…" value={suche} onChange={e=>setSuche(e.target.value)}
@@ -3813,7 +3824,6 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
         {suche&&<button onClick={()=>setSuche("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
       </div>
 
-      {/* Filtre */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         {["Aktiv","Zurückgegeben","alle"].map(s=>(
           <button key={s} onClick={()=>setFilter(s)}
@@ -3825,10 +3835,10 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
         ))}
       </div>
 
-      {/* Liste */}
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {gefiltert.map(v=>{
           const vs=VERMIET_STATUS[v._ueberfaellig?"Überfällig":v.status]||VERMIET_STATUS.Aktiv;
+          const anzahl=getFahrraeder(v).length;
           return(
             <div key={v.id} onClick={()=>{setSelV(v);setAnsicht("detail");}}
               style={{background:COLORS.card,border:`2px solid ${v._ueberfaellig?COLORS.red:v.status==="Aktiv"?COLORS.green+"66":COLORS.border}`,
@@ -3837,10 +3847,11 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
                   <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:12}}>#{v.nummer}</span>
                   <span style={{fontWeight:600}}>{v.mieterName}</span>
-                  <span style={{...vs,fontSize:10,fontWeight:700,background:vs.bg,color:vs.farbe,borderRadius:8,padding:"1px 8px"}}>{vs.label}</span>
+                  <span style={{fontSize:10,fontWeight:700,background:vs.bg,color:vs.farbe,borderRadius:8,padding:"1px 8px"}}>{vs.label}</span>
+                  {anzahl>1&&<span style={{fontSize:10,fontWeight:700,background:COLORS.accent+"18",color:COLORS.accent,borderRadius:8,padding:"1px 8px"}}>👨‍👩‍👧‍👦 {anzahl} Räder</span>}
                 </div>
                 <div style={{color:COLORS.muted,fontSize:12,display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <span>🚲 {v.fahrrad}</span>
+                  <span>🚲 {fahrraederKurz(v)}</span>
                   <span>·</span>
                   <span>{formatDatum(v.vonDatum)} – {formatDatum(v.bisDatum)}</span>
                   {v.preis&&<><span>·</span><span style={{fontWeight:600,color:COLORS.text}}>{formatEuro(v.preis)}</span></>}
@@ -3867,35 +3878,53 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
   const [form,setForm]=useState({
     mieterName:"", telefon:"", adresse:"",
     ausweisArt:"Personalausweis", ausweisNr:"",
-    fahrrad:"", rahmennummer:"",
+    fahrraeder:[{fahrrad:"",rahmennummer:"",zubehoer:"",zustand:""}],
     vonDatum:heute(), bisDatum:heute(),
     tagespreis:"", preis:"",
     kaution:"", kautionArt:"Keine",
-    zubehoer:"", zustand:"", notizen:"",
+    notizen:"",
   });
-  const F=(k,v)=>setForm(p=>{
-    const n={...p,[k]:v};
-    // Fiyat otomatik hesapla: gün sayısı × günlük fiyat
-    if(k==="vonDatum"||k==="bisDatum"||k==="tagespreis"){
-      const tage=tageZwischen(n.vonDatum,n.bisDatum);
-      const tp=parseFloat(n.tagespreis)||0;
-      if(tp>0)n.preis=(tage*tp).toFixed(2);
-    }
+
+  function recalc(n){
+    const tage=tageZwischen(n.vonDatum,n.bisDatum);
+    const tp=parseFloat(n.tagespreis)||0;
+    const anzahl=(n.fahrraeder||[]).length||1;
+    if(tp>0)n.preis=(tage*tp*anzahl).toFixed(2);
     return n;
-  });
+  }
+  const F=(k,v)=>setForm(p=>recalc({...p,[k]:v}));
+
+  // Bisiklet dizisi işlemleri
+  function radAendern(idx,key,val){
+    setForm(p=>{
+      const fahrraeder=p.fahrraeder.map((r,i)=>i===idx?{...r,[key]:val}:r);
+      return {...p,fahrraeder};
+    });
+  }
+  function radHinzu(){
+    setForm(p=>recalc({...p,fahrraeder:[...p.fahrraeder,{fahrrad:"",rahmennummer:"",zubehoer:"",zustand:""}]}));
+  }
+  function radEntfernen(idx){
+    setForm(p=>recalc({...p,fahrraeder:p.fahrraeder.filter((_,i)=>i!==idx)}));
+  }
 
   const kundenGefiltert=kundeSuche?[...kunden]
     .filter(k=>`${k.vorname} ${k.nachname} ${k.telefon||""}`.toLowerCase().includes(kundeSuche.toLowerCase()))
     .slice(0,5):[];
 
   const tage=tageZwischen(form.vonDatum,form.bisDatum);
+  const radAnzahl=form.fahrraeder.length;
 
   async function speichern(){
     if(!form.mieterName){showToast("Bitte Mieter-Name eingeben.","err");return;}
     if(!form.telefon){showToast("Bitte Telefonnummer eingeben.","err");return;}
-    if(!form.fahrrad){showToast("Bitte Fahrrad angeben.","err");return;}
+    const gecerliRad=form.fahrraeder.filter(r=>r.fahrrad&&r.fahrrad.trim());
+    if(gecerliRad.length===0){showToast("Bitte mindestens ein Fahrrad angeben.","err");return;}
     setSaving(true);
-    try{ await onSave(form); }
+    try{
+      // Sadece dolu bisikletleri kaydet
+      await onSave({...form,fahrraeder:gecerliRad});
+    }
     catch(err){ showToast("Fehler: "+(err.message||"Speichern fehlgeschlagen"),"err"); setSaving(false); }
   }
 
@@ -3909,7 +3938,6 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
       {/* MIETER */}
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
         <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>👤 MIETER</div>
-        {/* Mevcut müşteriden seç */}
         <div style={{position:"relative",marginBottom:10}}>
           <input placeholder="Bestandskunde suchen (optional)…" value={kundeSuche}
             onChange={e=>setKundeSuche(e.target.value)} style={inputStyle}/>
@@ -3941,15 +3969,28 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
         </div>
       </div>
 
-      {/* FAHRRAD */}
+      {/* FAHRRÄDER — çoklu */}
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
-        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD</div>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
-          <input placeholder="Fahrrad (Marke/Modell) *" value={form.fahrrad} onChange={e=>F("fahrrad",e.target.value)} style={inputStyle}/>
-          <input placeholder="Rahmennummer" value={form.rahmennummer} onChange={e=>F("rahmennummer",e.target.value)} style={inputStyle}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5}}>🚲 FAHRRÄDER ({radAnzahl})</div>
+          <button onClick={radHinzu} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:COLORS.accent,borderColor:COLORS.accent}}>+ Fahrrad</button>
         </div>
-        <input placeholder="Zubehör (Helm, Schloss, Licht…)" value={form.zubehoer} onChange={e=>F("zubehoer",e.target.value)} style={{...inputStyle,marginTop:10}}/>
-        <input placeholder="Zustand bei Übergabe (z.B. leichte Kratzer)" value={form.zustand} onChange={e=>F("zustand",e.target.value)} style={{...inputStyle,marginTop:10}}/>
+        {form.fahrraeder.map((rad,idx)=>(
+          <div key={idx} style={{border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"12px",marginBottom:10,background:COLORS.surface}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <span style={{fontSize:11,fontWeight:700,color:COLORS.accent}}>Fahrrad {idx+1}</span>
+              {radAnzahl>1&&<button onClick={()=>radEntfernen(idx)} style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:13,padding:"2px 6px"}}>🗑️ entfernen</button>}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
+              <input placeholder="Fahrrad (Marke/Modell) *" value={rad.fahrrad} onChange={e=>radAendern(idx,"fahrrad",e.target.value)} style={inputStyle}/>
+              <input placeholder="Rahmennummer" value={rad.rahmennummer} onChange={e=>radAendern(idx,"rahmennummer",e.target.value)} style={inputStyle}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
+              <input placeholder="Zubehör (Helm, Schloss…)" value={rad.zubehoer} onChange={e=>radAendern(idx,"zubehoer",e.target.value)} style={inputStyle}/>
+              <input placeholder="Zustand bei Übergabe" value={rad.zustand} onChange={e=>radAendern(idx,"zustand",e.target.value)} style={inputStyle}/>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* ZEITRAUM & PREIS */}
@@ -3961,9 +4002,14 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
           <div style={{textAlign:"center",padding:"8px 12px",background:COLORS.accent+"18",borderRadius:8,color:COLORS.accent,fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{tage} {tage===1?"Tag":"Tage"}</div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginTop:10}}>
-          <div><label style={labelStyle}>Tagespreis (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.tagespreis} onChange={e=>F("tagespreis",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Tagespreis / Rad (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.tagespreis} onChange={e=>F("tagespreis",e.target.value)} style={inputStyle}/></div>
           <div><label style={labelStyle}>Gesamtpreis (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.preis} onChange={e=>F("preis",e.target.value)} style={{...inputStyle,fontWeight:700}}/></div>
         </div>
+        {form.tagespreis&&radAnzahl>1&&(
+          <div style={{marginTop:8,fontSize:12,color:COLORS.muted}}>
+            {radAnzahl} Räder × {tage} {tage===1?"Tag":"Tage"} × {formatEuro(form.tagespreis)} = <strong style={{color:COLORS.accent}}>{formatEuro(form.preis||0)}</strong>
+          </div>
+        )}
       </div>
 
       {/* KAUTION */}
@@ -3977,7 +4023,6 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
         </div>
       </div>
 
-      {/* NOTIZEN */}
       <textarea placeholder="Anmerkungen…" value={form.notizen} onChange={e=>F("notizen",e.target.value)}
         rows={2} style={{...inputStyle,resize:"vertical",marginBottom:16}}/>
 
@@ -3996,11 +4041,20 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
   const v=vermietung;
   const vs=VERMIET_STATUS[v.status]||VERMIET_STATUS.Aktiv;
   const tage=tageZwischen(v.vonDatum,v.bisDatum);
+  const raeder=getFahrraeder(v);
 
   function drucken(){
     if(!printRef.current)return;
     const win=window.open("","_blank");
     if(!win)return;
+    const raederHtml=raeder.map((r,i)=>`
+      <div class="box">
+        <div class="label">Fahrrad ${raeder.length>1?(i+1):""}</div>
+        <div class="row"><span>Fahrrad:</span><span>${r.fahrrad||"—"}</span></div>
+        ${r.rahmennummer?`<div class="row"><span>Rahmennummer:</span><span>${r.rahmennummer}</span></div>`:""}
+        ${r.zubehoer?`<div class="row"><span>Zubehör:</span><span>${r.zubehoer}</span></div>`:""}
+        ${r.zustand?`<div class="row"><span>Zustand bei Übergabe:</span><span>${r.zustand}</span></div>`:""}
+      </div>`).join("");
     win.document.write(`<html><head><title>Mietvertrag ${v.nummer}</title>
       <style>
         body{font-family:sans-serif;color:#111;padding:${isMobile?16:36}px;line-height:1.5;font-size:13px;}
@@ -4027,19 +4081,14 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
         <div class="row"><span>Ausweis:</span><span>${v.ausweisArt||"—"} ${v.ausweisNr?"Nr. "+v.ausweisNr:""}</span></div>
       </div>
 
-      <div class="box">
-        <div class="label">Fahrrad</div>
-        <div class="row"><span>Fahrrad:</span><span>${v.fahrrad||"—"}</span></div>
-        ${v.rahmennummer?`<div class="row"><span>Rahmennummer:</span><span>${v.rahmennummer}</span></div>`:""}
-        ${v.zubehoer?`<div class="row"><span>Zubehör:</span><span>${v.zubehoer}</span></div>`:""}
-        ${v.zustand?`<div class="row"><span>Zustand bei Übergabe:</span><span>${v.zustand}</span></div>`:""}
-      </div>
+      ${raederHtml}
 
       <div class="box">
         <div class="label">Mietzeitraum</div>
         <div class="row"><span>Von:</span><span>${v.vonDatum||"—"}</span></div>
         <div class="row"><span>Bis:</span><span>${v.bisDatum||"—"}</span></div>
         <div class="row"><span>Dauer:</span><span>${tage} ${tage===1?"Tag":"Tage"}</span></div>
+        <div class="row"><span>Anzahl Fahrräder:</span><span>${raeder.length}</span></div>
         ${v.kautionArt&&v.kautionArt!=="Keine"?`<div class="row"><span>Kaution:</span><span>${v.kautionArt}${v.kaution?" ("+formatEuro(v.kaution)+")":""}</span></div>`:""}
       </div>
 
@@ -4048,12 +4097,12 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
       <div class="box" style="margin-top:16px;">
         <div class="label">Mietbedingungen (AGB)</div>
         <div class="agb">
-          1. Der Mieter bestätigt, das Fahrrad in ordnungsgemäßem und verkehrssicherem Zustand erhalten zu haben.<br/>
-          2. Das Fahrrad ist pfleglich zu behandeln und zum vereinbarten Zeitpunkt zurückzugeben.<br/>
+          1. Der Mieter bestätigt, die Fahrräder in ordnungsgemäßem und verkehrssicherem Zustand erhalten zu haben.<br/>
+          2. Die Fahrräder sind pfleglich zu behandeln und zum vereinbarten Zeitpunkt zurückzugeben.<br/>
           3. Bei Beschädigung, Verlust oder Diebstahl haftet der Mieter in voller Höhe des Zeitwerts.<br/>
-          4. Eine verspätete Rückgabe wird mit dem vereinbarten Tagespreis je angefangenem Tag berechnet.<br/>
+          4. Eine verspätete Rückgabe wird mit dem vereinbarten Tagespreis je angefangenem Tag und Fahrrad berechnet.<br/>
           5. Der Mieter fährt auf eigene Gefahr. Der Vermieter haftet nicht für Unfälle oder Schäden Dritter.<br/>
-          6. Das Fahrrad darf nicht an Dritte weitergegeben werden.<br/>
+          6. Die Fahrräder dürfen nicht an unbefugte Dritte weitergegeben werden.<br/>
           7. Die Kaution wird bei ordnungsgemäßer Rückgabe vollständig erstattet.
         </div>
       </div>
@@ -4079,12 +4128,11 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
         <button onClick={drucken} style={btnPrimary}>🖨️ Mietvertrag drucken</button>
       </div>
 
-      {/* STATUS AKSIYONLARI */}
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
         <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>STATUS</div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {v.status==="Aktiv"&&(
-            <button onClick={()=>showConfirm("Fahrrad wurde zurückgegeben?",()=>onStatus(v.id,"Zurückgegeben"),{icon:"✓",okLabel:"Zurückgegeben",okColor:COLORS.green})}
+            <button onClick={()=>showConfirm("Alle Fahrräder wurden zurückgegeben?",()=>onStatus(v.id,"Zurückgegeben"),{icon:"✓",okLabel:"Zurückgegeben",okColor:COLORS.green})}
               style={{...btnPrimary,background:COLORS.green}}>✓ Rückgabe bestätigen</button>
           )}
           {v.status==="Zurückgegeben"&&(
@@ -4096,17 +4144,21 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
         </div>
       </div>
 
-      {/* Ekranda özet */}
       <div ref={printRef} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px"}}>
         <VDetailRow label="Mieter" wert={v.mieterName}/>
         <VDetailRow label="Telefon" wert={v.telefon}/>
         {v.adresse&&<VDetailRow label="Adresse" wert={v.adresse}/>}
         <VDetailRow label="Ausweis" wert={`${v.ausweisArt||"—"} ${v.ausweisNr?"· "+v.ausweisNr:""}`}/>
         <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
-        <VDetailRow label="Fahrrad" wert={v.fahrrad}/>
-        {v.rahmennummer&&<VDetailRow label="Rahmennummer" wert={v.rahmennummer}/>}
-        {v.zubehoer&&<VDetailRow label="Zubehör" wert={v.zubehoer}/>}
-        {v.zustand&&<VDetailRow label="Zustand" wert={v.zustand}/>}
+        <div style={{fontSize:12,fontWeight:700,color:COLORS.muted,marginBottom:8}}>🚲 FAHRRÄDER ({raeder.length})</div>
+        {raeder.map((r,i)=>(
+          <div key={i} style={{border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+            <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{raeder.length>1?`${i+1}. `:""}{r.fahrrad}</div>
+            {r.rahmennummer&&<div style={{fontSize:12,color:COLORS.muted}}>Rahmen: {r.rahmennummer}</div>}
+            {r.zubehoer&&<div style={{fontSize:12,color:COLORS.muted}}>Zubehör: {r.zubehoer}</div>}
+            {r.zustand&&<div style={{fontSize:12,color:COLORS.muted}}>Zustand: {r.zustand}</div>}
+          </div>
+        ))}
         <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
         <VDetailRow label="Zeitraum" wert={`${formatDatum(v.vonDatum)} – ${formatDatum(v.bisDatum)} (${tage} ${tage===1?"Tag":"Tage"})`}/>
         {v.rueckDatum&&<VDetailRow label="Zurückgegeben am" wert={formatDatum(v.rueckDatum)}/>}
