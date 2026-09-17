@@ -511,6 +511,7 @@ function rowToRechnung(r){return{...r.data,id:r.id,kundeId:r.kunde_id,auftragId:
 function rowToBenutzer(r){return{...r.data,id:r.id};}
 function rowToEnvanter(r){return{...r.data,id:r.id,durum:r.durum||(r.data&&r.data.durum)||"Im Laden",erstellt:r.erstellt};}
 function rowToVermietung(r){return{...r.data,id:r.id,status:r.status||(r.data&&r.data.status)||"Aktiv",erstellt:r.erstellt};}
+function rowToMietrad(r){return{...r.data,id:r.id,status:r.status||(r.data&&r.data.status)||"Verfügbar",erstellt:r.erstellt};}
 
 // ─── HAUPTKOMPONENTE ─────────────────────────────────────────────────────────
 export default function DrahteselApp() {
@@ -533,6 +534,7 @@ export default function DrahteselApp() {
   const [kunden,setKunden]=useState([]);
   const [envanter,setEnvanter]=useState([]);
   const [vermietungen,setVermietungen]=useState([]);
+  const [mietraeder,setMietraeder]=useState([]);
   const [bisikletler,setBisikletler]=useState([]);
   const [auftraege,setAuftraege]=useState([]);
   const [rechnungen,setRechnungen]=useState([]);
@@ -628,8 +630,8 @@ export default function DrahteselApp() {
     if (!benutzer) return;
     setLaden(true);
     try {
-      const [kR,bR,aR,rR,eR,vR] = await Promise.all([
-        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"), dbGet("vermietungen"),
+      const [kR,bR,aR,rR,eR,vR,mR] = await Promise.all([
+        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"), dbGet("vermietungen"), dbGet("mietraeder"),
       ]);
       const neueKunden=kR.map(rowToKunde);
       const neueAuftraege=aR.map(rowToAuftrag);
@@ -639,6 +641,7 @@ export default function DrahteselApp() {
       setRechnungen(rR.map(rowToRechnung));
       setEnvanter(eR.map(rowToEnvanter));
       setVermietungen((vR||[]).map(rowToVermietung));
+      setMietraeder((mR||[]).map(rowToMietrad));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
       setSelAuftrag(prev=>prev?neueAuftraege.find(a=>a.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
@@ -825,6 +828,35 @@ export default function DrahteselApp() {
     setVermietungen(p=>p.filter(x=>x.id!==id));
   }
 
+  async function mietradHinzufuegen(m) {
+    const id=genId(); const erstellt=heute();
+    const status=m.status||"Verfügbar";
+    const neu={...m,id,erstellt,status};
+    const dataObj={...m,status};
+    try{ await dbInsert("mietraeder",{id,status,erstellt,data:dataObj}); }
+    catch(err){ await dbInsert("mietraeder",{id,erstellt,data:dataObj}); }
+    setMietraeder(p=>[neu,...p]); return neu;
+  }
+  async function mietradAktualisieren(m) {
+    const {id,status,erstellt,...rest}=m;
+    const data={...rest,status};
+    try{ await dbUpdate("mietraeder",id,{status,data}); }
+    catch(err){ await dbUpdate("mietraeder",id,{data}); }
+    setMietraeder(p=>p.map(x=>x.id===id?m:x));
+  }
+  async function mietradStatusAendern(id,status) {
+    const m=mietraeder.find(x=>x.id===id); if(!m)return;
+    const {id:_,status:__,erstellt,...rest}=m;
+    const data={...rest,status};
+    try{ await dbUpdate("mietraeder",id,{status,data}); }
+    catch(err){ await dbUpdate("mietraeder",id,{data}); }
+    setMietraeder(p=>p.map(x=>x.id===id?{...x,status}:x));
+  }
+  async function mietradLoeschen(id) {
+    await dbDelete("mietraeder",id);
+    setMietraeder(p=>p.filter(x=>x.id!==id));
+  }
+
   async function rechnungLoeschen(id) {
     await dbDelete("rechnungen",id);
     setRechnungen(p=>p.filter(x=>x.id!==id));
@@ -926,7 +958,7 @@ export default function DrahteselApp() {
       {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0006",zIndex:88,backdropFilter:"blur(2px)"}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
         aktivVermietung={vermietungen.filter(v=>v.status==="Aktiv").length}
-        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);setVermietungen([]);}}
+        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);setVermietungen([]);setMietraeder([]);}}
         isMobile={isMobile} onClose={()=>setSidebarOffen(false)}/>}
       {/* Hamburger — sadece sidebar kapalıyken göster */}
       {!sidebarOffen&&<button onClick={()=>setSidebarOffen(true)}
@@ -1073,14 +1105,58 @@ export default function DrahteselApp() {
           vermietungen={vermietungen}
           kunden={kunden}
           envanter={envanter}
+          mietraeder={mietraeder}
           isMobile={isMobile}
           showToast={showToast}
           showConfirm={showConfirm}
           firma={(()=>{try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{};}catch{return{};}})()}
-          onEkle={async(v)=>{try{const neu=await vermietungHinzufuegen(v);showToast("Vermietung erstellt!");return neu;}catch(err){showToast("Hata: "+err.message,"err");throw err;}}}
-          onStatus={async(id,s)=>{try{await vermietungStatusAendern(id,s);showToast(s==="Zurückgegeben"?"Zurückgegeben ✓":"Aktualisiert!");}catch(err){showToast("Hata","err");}}}
+          onEkle={async(v)=>{try{
+            const neu=await vermietungHinzufuegen(v);
+            // Havuzdan seçilen bisikletleri "Vermietet" yap
+            for(const rad of (v.fahrraeder||[])){
+              if(rad.mietradId){try{await mietradStatusAendern(rad.mietradId,"Vermietet");}catch{}}
+            }
+            showToast("Vermietung erstellt!");return neu;
+          }catch(err){showToast("Hata: "+err.message,"err");throw err;}}}
+          onStatus={async(id,s)=>{try{
+            await vermietungStatusAendern(id,s);
+            // İade edilince havuzdaki bisikletleri "Verfügbar" yap
+            if(s==="Zurückgegeben"){
+              const v=vermietungen.find(x=>x.id===id);
+              for(const rad of ((v&&v.fahrraeder)||[])){
+                if(rad.mietradId){try{await mietradStatusAendern(rad.mietradId,"Verfügbar");}catch{}}
+              }
+            }
+            // Tekrar aktifleştirilince "Vermietet" yap
+            if(s==="Aktiv"){
+              const v=vermietungen.find(x=>x.id===id);
+              for(const rad of ((v&&v.fahrraeder)||[])){
+                if(rad.mietradId){try{await mietradStatusAendern(rad.mietradId,"Vermietet");}catch{}}
+              }
+            }
+            showToast(s==="Zurückgegeben"?"Zurückgegeben ✓":"Aktualisiert!");
+          }catch(err){showToast("Hata","err");}}}
           onGuncelle={async(v)=>{try{await vermietungAktualisieren(v);showToast("Gespeichert!");}catch(err){showToast("Hata: "+err.message,"err");}}}
-          onSil={async(id)=>{try{await vermietungLoeschen(id);showToast("Gelöscht.");}catch(err){showToast("Hata","err");}}}
+          onSil={async(id)=>{try{
+            // Silince havuzdaki bisikletleri serbest bırak
+            const v=vermietungen.find(x=>x.id===id);
+            if(v&&v.status==="Aktiv"){
+              for(const rad of (v.fahrraeder||[])){
+                if(rad.mietradId){try{await mietradStatusAendern(rad.mietradId,"Verfügbar");}catch{}}
+              }
+            }
+            await vermietungLoeschen(id);showToast("Gelöscht.");
+          }catch(err){showToast("Hata","err");}}}
+        />}
+        {screen==="mietraeder"&&<MietraederScreen
+          mietraeder={mietraeder}
+          isMobile={isMobile}
+          showToast={showToast}
+          showConfirm={showConfirm}
+          onEkle={async(m)=>{try{await mietradHinzufuegen(m);showToast("Mietrad hinzugefügt!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onGuncelle={async(m)=>{try{await mietradAktualisieren(m);showToast("Gespeichert!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onStatus={async(id,s)=>{try{await mietradStatusAendern(id,s);showToast("Status geändert.");}catch(err){showToast("Hata","err");}}}
+          onSil={async(id)=>{try{await mietradLoeschen(id);showToast("Gelöscht.");}catch(err){showToast("Hata","err");}}}
         />}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden}/>}
         {screen==="neu-auftrag-quick"&&<QuickAuftragScreen
@@ -1211,6 +1287,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose,
     {id:"raporlama",label:"Raporlama",icon:"📊"},
     {id:"envanter",label:"Fahrrad-Lager",icon:"🏪"},
     {id:"vermietung",label:"Vermietung",icon:"🔑",badge:aktivVermietung||null},
+    {id:"mietraeder",label:"Mieträder",icon:"🚲"},
     {id:"katalog",label:"Leistungskatalog",icon:"📋"},
     {id:"einstellungen",label:"Einstellungen",icon:"⚙"},
   ];
@@ -3777,7 +3854,7 @@ function fahrraederKurz(v){
   return `${arr[0].fahrrad} +${arr.length-1}`;
 }
 
-function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showConfirm,firma,onEkle,onStatus,onGuncelle,onSil}){
+function VermietungScreen({vermietungen,kunden,envanter,mietraeder,isMobile,showToast,showConfirm,firma,onEkle,onStatus,onGuncelle,onSil}){
   const [ansicht,setAnsicht]=useState("liste");
   const [selV,setSelV]=useState(null);
   const [filter,setFilter]=useState("Aktiv");
@@ -3795,7 +3872,7 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
   },[vermietungen,filter,suche]);
 
   if(ansicht==="neu") return <VermietungForm
-    kunden={kunden} envanter={envanter} isMobile={isMobile} showToast={showToast}
+    kunden={kunden} envanter={envanter} mietraeder={mietraeder} isMobile={isMobile} showToast={showToast}
     onSave={async(v)=>{const neu=await onEkle(v);setSelV(neu);setAnsicht("detail");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
@@ -3872,7 +3949,7 @@ function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showC
   );
 }
 
-function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
+function VermietungForm({kunden,envanter,mietraeder,isMobile,showToast,onSave,onAbbruch}){
   const [saving,setSaving]=useState(false);
   const [kundeSuche,setKundeSuche]=useState("");
   const [form,setForm]=useState({
@@ -3907,6 +3984,29 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
   function radEntfernen(idx){
     setForm(p=>recalc({...p,fahrraeder:p.fahrraeder.filter((_,i)=>i!==idx)}));
   }
+  // Havuzdan bisiklet seçimi — form alanlarını otomatik doldur
+  function radAusFlotte(idx,mietradId){
+    if(!mietradId){
+      // Seçim kaldırıldı — sadece mietradId'yi temizle, alanları koru
+      radAendern(idx,"mietradId","");
+      return;
+    }
+    const m=(mietraeder||[]).find(x=>x.id===mietradId);
+    if(!m)return;
+    setForm(p=>{
+      const fahrraeder=p.fahrraeder.map((r,i)=>i===idx?{
+        ...r,
+        mietradId:m.id,
+        fahrrad:`${m.marke||""} ${m.modell||""}`.trim(),
+        rahmennummer:m.rahmennummer||"",
+        zubehoer:m.zubehoer||r.zubehoer||"",
+      }:r);
+      return {...p,fahrraeder};
+    });
+  }
+  // Müsait bisikletler — halihazırda formda seçili olanlar hariç
+  const gewaehlteIds=form.fahrraeder.map(r=>r.mietradId).filter(Boolean);
+  const verfuegbareRaeder=(mietraeder||[]).filter(m=>m.status==="Verfügbar"&&!gewaehlteIds.includes(m.id));
 
   const kundenGefiltert=kundeSuche?[...kunden]
     .filter(k=>`${k.vorname} ${k.nachname} ${k.telefon||""}`.toLowerCase().includes(kundeSuche.toLowerCase()))
@@ -3976,11 +4076,25 @@ function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
           <button onClick={radHinzu} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:COLORS.accent,borderColor:COLORS.accent}}>+ Fahrrad</button>
         </div>
         {form.fahrraeder.map((rad,idx)=>(
-          <div key={idx} style={{border:`1px solid ${COLORS.border}`,borderRadius:8,padding:"12px",marginBottom:10,background:COLORS.surface}}>
+          <div key={idx} style={{border:`1px solid ${rad.mietradId?COLORS.accent+"66":COLORS.border}`,borderRadius:8,padding:"12px",marginBottom:10,background:COLORS.surface}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <span style={{fontSize:11,fontWeight:700,color:COLORS.accent}}>Fahrrad {idx+1}</span>
+              <span style={{fontSize:11,fontWeight:700,color:COLORS.accent}}>Fahrrad {idx+1}{rad.mietradId&&<span style={{marginLeft:6,color:COLORS.green}}>· aus Flotte</span>}</span>
               {radAnzahl>1&&<button onClick={()=>radEntfernen(idx)} style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:13,padding:"2px 6px"}}>🗑️ entfernen</button>}
             </div>
+            {/* Havuzdan seç */}
+            {verfuegbareRaeder.length>0&&(
+              <div style={{marginBottom:8}}>
+                <select value={rad.mietradId||""} onChange={e=>radAusFlotte(idx,e.target.value)} style={{...inputStyle,fontSize:13}}>
+                  <option value="">— Manuell eingeben oder aus Flotte wählen —</option>
+                  {verfuegbareRaeder.map(m=>(
+                    <option key={m.id} value={m.id}>🚲 {m.marke} {m.modell}{m.rahmengroesse?" ("+m.rahmengroesse+")":""}</option>
+                  ))}
+                  {rad.mietradId&&!verfuegbareRaeder.find(m=>m.id===rad.mietradId)&&(
+                    <option value={rad.mietradId}>🚲 {rad.fahrrad} (gewählt)</option>
+                  )}
+                </select>
+              </div>
+            )}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
               <input placeholder="Fahrrad (Marke/Modell) *" value={rad.fahrrad} onChange={e=>radAendern(idx,"fahrrad",e.target.value)} style={inputStyle}/>
               <input placeholder="Rahmennummer" value={rad.rahmennummer} onChange={e=>radAendern(idx,"rahmennummer",e.target.value)} style={inputStyle}/>
@@ -4177,6 +4291,162 @@ function VDetailRow({label,wert}){
     <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:14,gap:12}}>
       <span style={{color:COLORS.muted,flexShrink:0}}>{label}:</span>
       <span style={{fontWeight:500,textAlign:"right",wordBreak:"break-word"}}>{wert||"—"}</span>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MIETRÄDER (KİRALIK BİSİKLET FİLOSU)
+// ═══════════════════════════════════════════════════════════════════════════════
+const MIETRAD_STATUS = {
+  "Verfügbar": {farbe:"#16a34a", bg:"#16a34a22", label:"🟢 Verfügbar"},
+  "Vermietet": {farbe:"#ea580c", bg:"#ea580c22", label:"🔑 Vermietet"},
+  "Wartung":   {farbe:"#5a7a9a", bg:"#5a7a9a22", label:"🔧 Wartung"},
+};
+
+function MietraederScreen({mietraeder,isMobile,showToast,showConfirm,onEkle,onGuncelle,onStatus,onSil}){
+  const [ansicht,setAnsicht]=useState("liste");
+  const [selM,setSelM]=useState(null);
+  const [filter,setFilter]=useState("alle");
+  const [suche,setSuche]=useState("");
+
+  const gefiltert=useMemo(()=>{
+    return [...mietraeder]
+      .sort((a,b)=>`${a.marke} ${a.modell}`.localeCompare(`${b.marke} ${b.modell}`))
+      .filter(m=>filter==="alle"||m.status===filter)
+      .filter(m=>!suche||`${m.marke||""} ${m.modell||""} ${m.rahmennummer||""}`.toLowerCase().includes(suche.toLowerCase()));
+  },[mietraeder,filter,suche]);
+
+  if(ansicht==="neu"||ansicht==="edit") return <MietradForm
+    mietrad={ansicht==="edit"?selM:null} isMobile={isMobile} showToast={showToast}
+    onSave={async(m)=>{
+      if(ansicht==="edit"){await onGuncelle({...m,id:selM.id,erstellt:selM.erstellt});}
+      else{await onEkle(m);}
+      setAnsicht("liste");
+    }}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  const verf=mietraeder.filter(m=>m.status==="Verfügbar").length;
+  const verm=mietraeder.filter(m=>m.status==="Vermietet").length;
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700}}>🚲 Mieträder</h2>
+          <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{verf} verfügbar · {verm} vermietet · {mietraeder.length} gesamt</div>
+        </div>
+        <button onClick={()=>{setSelM(null);setAnsicht("neu");}} style={btnPrimary}>+ Neues Mietrad</button>
+      </div>
+
+      <div style={{position:"relative",marginBottom:10}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <input placeholder="Suchen (Marke, Modell, Rahmen)…" value={suche} onChange={e=>setSuche(e.target.value)} style={{...inputStyle,paddingLeft:42}}/>
+        {suche&&<button onClick={()=>setSuche("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {["alle","Verfügbar","Vermietet","Wartung"].map(s=>(
+          <button key={s} onClick={()=>setFilter(s)}
+            style={{padding:"6px 16px",borderRadius:20,border:`1px solid ${filter===s?COLORS.accent:COLORS.border}`,
+              background:filter===s?COLORS.accent:"transparent",color:filter===s?"#fff":COLORS.muted,cursor:"pointer",fontSize:13,fontWeight:filter===s?600:400}}>
+            {s==="alle"?"Alle":MIETRAD_STATUS[s]?.label||s}
+          </button>
+        ))}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {gefiltert.map(m=>{
+          const ms=MIETRAD_STATUS[m.status]||MIETRAD_STATUS.Verfügbar;
+          return(
+            <div key={m.id} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+              <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{setSelM(m);setAnsicht("edit");}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontWeight:600}}>{m.marke} {m.modell}</span>
+                  <span style={{fontSize:10,fontWeight:700,background:ms.bg,color:ms.farbe,borderRadius:8,padding:"1px 8px"}}>{ms.label}</span>
+                </div>
+                <div style={{color:COLORS.muted,fontSize:12,marginTop:3,display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {m.rahmengroesse&&<span>📏 {m.rahmengroesse}</span>}
+                  {m.rahmennummer&&<span>· {m.rahmennummer}</span>}
+                  {m.tagespreis&&<span>· {formatEuro(m.tagespreis)}/Tag</span>}
+                </div>
+              </div>
+              {/* Hızlı durum değiştir */}
+              <select value={m.status} onClick={e=>e.stopPropagation()} onChange={e=>onStatus(m.id,e.target.value)}
+                style={{fontSize:11,padding:"4px 8px",borderRadius:8,border:`1px solid ${ms.farbe}44`,background:ms.bg,color:ms.farbe,fontWeight:600,cursor:"pointer",outline:"none"}}>
+                {Object.keys(MIETRAD_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+              <button onClick={()=>showConfirm(`"${m.marke} ${m.modell}" löschen?`,()=>onSil(m.id),{icon:"🗑️",okLabel:"Löschen"})}
+                style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:15,padding:"2px 6px"}}>🗑️</button>
+            </div>
+          );
+        })}
+        {!gefiltert.length&&(
+          <div style={{textAlign:"center",padding:40,color:COLORS.muted}}>
+            {mietraeder.length===0?"Noch keine Mieträder angelegt.":"Keine Treffer."}
+            {mietraeder.length===0&&<div style={{marginTop:12}}><button onClick={()=>{setSelM(null);setAnsicht("neu");}} style={btnPrimary}>+ Erstes Mietrad</button></div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MietradForm({mietrad,isMobile,showToast,onSave,onAbbruch}){
+  const [saving,setSaving]=useState(false);
+  const [form,setForm]=useState(mietrad||{
+    marke:"", modell:"", typ:"", rahmengroesse:"", rahmennummer:"",
+    farbe:"", tagespreis:"", zubehoer:"", status:"Verfügbar", notizen:"",
+  });
+  const F=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const isEdit=!!mietrad;
+
+  async function speichern(){
+    if(!form.marke&&!form.modell){showToast("Bitte Marke oder Modell eingeben.","err");return;}
+    setSaving(true);
+    try{ await onSave(form); }
+    catch(err){ showToast("Fehler: "+(err.message||"Speichern fehlgeschlagen"),"err"); setSaving(false); }
+  }
+
+  return(
+    <div style={{maxWidth:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{fontSize:20,fontWeight:700}}>{isEdit?"🚲 Mietrad bearbeiten":"🚲 Neues Mietrad"}</h2>
+        <button onClick={onAbbruch} style={btnSecondary}>✕</button>
+      </div>
+
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+          <input placeholder="Marke (z.B. Cube) *" value={form.marke} onChange={e=>F("marke",e.target.value)} style={inputStyle}/>
+          <input placeholder="Modell" value={form.modell} onChange={e=>F("modell",e.target.value)} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+          <select value={form.typ} onChange={e=>F("typ",e.target.value)} style={inputStyle}>
+            <option value="">Typ…</option>
+            {["Herrenrad","Damenrad","Kinderrad","E-Bike","Lastenrad","Mountainbike","Rennrad","Trekkingrad"].map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+          <input placeholder="Größe (z.B. 54)" value={form.rahmengroesse} onChange={e=>F("rahmengroesse",e.target.value)} style={inputStyle}/>
+          <input placeholder="Farbe" value={form.farbe} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+          <input placeholder="Rahmennummer" value={form.rahmennummer} onChange={e=>F("rahmennummer",e.target.value)} style={inputStyle}/>
+          <div><input type="number" step="0.01" placeholder="Tagespreis (€)" value={form.tagespreis} onChange={e=>F("tagespreis",e.target.value)} style={inputStyle}/></div>
+        </div>
+        <input placeholder="Zubehör (Helm, Schloss, Licht…)" value={form.zubehoer} onChange={e=>F("zubehoer",e.target.value)} style={{...inputStyle,marginBottom:10}}/>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+          <select value={form.status} onChange={e=>F("status",e.target.value)} style={inputStyle}>
+            {Object.keys(MIETRAD_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <textarea placeholder="Anmerkungen…" value={form.notizen} onChange={e=>F("notizen",e.target.value)} rows={2} style={{...inputStyle,resize:"vertical",marginTop:10}}/>
+      </div>
+
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={onAbbruch} style={{...btnSecondary,flex:1}}>Abbrechen</button>
+        <button disabled={saving} onClick={speichern} style={{...btnPrimary,flex:2,opacity:saving?.6:1}}>
+          {saving?"Wird gespeichert…":isEdit?"💾 Speichern":"✓ Hinzufügen"}
+        </button>
+      </div>
     </div>
   );
 }
