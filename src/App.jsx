@@ -628,7 +628,7 @@ export default function DrahteselApp() {
     if (!benutzer) return;
     setLaden(true);
     try {
-      const [kR,bR,aR,rR,eR] = await Promise.all([
+      const [kR,bR,aR,rR,eR,vR] = await Promise.all([
         dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"), dbGet("vermietungen"),
       ]);
       const neueKunden=kR.map(rowToKunde);
