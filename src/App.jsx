@@ -467,6 +467,19 @@ function formatDatum(str){
   return d.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"});
 }
 
+// Alman format (DD.MM.YYYY) <-> ISO (YYYY-MM-DD) — date input için
+function toISODate(str){
+  const d=parseDatum(str);
+  if(!d)return "";
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function fromISODate(iso){
+  if(!iso)return "";
+  const m=iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(!m)return iso;
+  return `${m[3]}.${m[2]}.${m[1]}`;
+}
+
 function tageSeit(str){
   const d=parseDatum(str);
   if(!d)return 0;
@@ -497,6 +510,7 @@ function rowToAuftrag(r){return{...r.data,id:r.id,kundeId:r.kunde_id,bisikletId:
 function rowToRechnung(r){return{...r.data,id:r.id,kundeId:r.kunde_id,auftragId:r.auftrag_id,erstellt:r.erstellt};}
 function rowToBenutzer(r){return{...r.data,id:r.id};}
 function rowToEnvanter(r){return{...r.data,id:r.id,durum:r.durum||(r.data&&r.data.durum)||"Im Laden",erstellt:r.erstellt};}
+function rowToVermietung(r){return{...r.data,id:r.id,status:r.status||(r.data&&r.data.status)||"Aktiv",erstellt:r.erstellt};}
 
 // ─── HAUPTKOMPONENTE ─────────────────────────────────────────────────────────
 export default function DrahteselApp() {
@@ -518,6 +532,7 @@ export default function DrahteselApp() {
   });
   const [kunden,setKunden]=useState([]);
   const [envanter,setEnvanter]=useState([]);
+  const [vermietungen,setVermietungen]=useState([]);
   const [bisikletler,setBisikletler]=useState([]);
   const [auftraege,setAuftraege]=useState([]);
   const [rechnungen,setRechnungen]=useState([]);
@@ -614,7 +629,7 @@ export default function DrahteselApp() {
     setLaden(true);
     try {
       const [kR,bR,aR,rR,eR] = await Promise.all([
-        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"),
+        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"), dbGet("vermietungen"),
       ]);
       const neueKunden=kR.map(rowToKunde);
       const neueAuftraege=aR.map(rowToAuftrag);
@@ -623,6 +638,7 @@ export default function DrahteselApp() {
       setAuftraege(neueAuftraege);
       setRechnungen(rR.map(rowToRechnung));
       setEnvanter(eR.map(rowToEnvanter));
+      setVermietungen((vR||[]).map(rowToVermietung));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
       setSelAuftrag(prev=>prev?neueAuftraege.find(a=>a.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
@@ -758,6 +774,57 @@ export default function DrahteselApp() {
     setEnvanter(p=>p.filter(x=>x.id!==id));
   }
 
+  async function vermietungHinzufuegen(v) {
+    const id=genId(); const erstellt=heute();
+    // Kiralama numarası
+    let nummer=null;
+    try{
+      const r=await fetchWithAuth(`${SUPA_URL}/rest/v1/rpc/naechste_vermietung_nr`,{
+        method:"POST",headers:getHeaders(),body:"{}"
+      });
+      if(r.ok){const val=await r.json();if(val)nummer=String(val).replace(/"/g,"");}
+    }catch{}
+    if(!nummer){
+      const maxNr=vermietungen.reduce((m,x)=>Math.max(m,parseInt(x.nummer)||0),0);
+      nummer=String(maxNr+1).padStart(4,"0");
+    }
+    const status="Aktiv";
+    const neu={...v,id,nummer,erstellt,status};
+    const dataObj={...v,nummer,status};
+    try{
+      await dbInsert("vermietungen",{id,status,erstellt,data:dataObj});
+    }catch(err){
+      await dbInsert("vermietungen",{id,erstellt,data:dataObj});
+    }
+    setVermietungen(p=>[neu,...p]); return neu;
+  }
+  async function vermietungAktualisieren(v) {
+    const {id,status,erstellt,...rest}=v;
+    const data={...rest,status};
+    try{
+      await dbUpdate("vermietungen",id,{status,data});
+    }catch(err){
+      await dbUpdate("vermietungen",id,{data});
+    }
+    setVermietungen(p=>p.map(x=>x.id===id?v:x));
+  }
+  async function vermietungStatusAendern(id,status) {
+    const v=vermietungen.find(x=>x.id===id); if(!v)return;
+    const rueckDatum=status==="Zurückgegeben"?heute():v.rueckDatum;
+    const {id:_,status:__,erstellt,...rest}=v;
+    const data={...rest,status,rueckDatum};
+    try{
+      await dbUpdate("vermietungen",id,{status,data});
+    }catch(err){
+      await dbUpdate("vermietungen",id,{data});
+    }
+    setVermietungen(p=>p.map(x=>x.id===id?{...x,status,rueckDatum}:x));
+  }
+  async function vermietungLoeschen(id) {
+    await dbDelete("vermietungen",id);
+    setVermietungen(p=>p.filter(x=>x.id!==id));
+  }
+
   async function rechnungLoeschen(id) {
     await dbDelete("rechnungen",id);
     setRechnungen(p=>p.filter(x=>x.id!==id));
@@ -858,7 +925,8 @@ export default function DrahteselApp() {
       {/* Mobile overlay backdrop */}
       {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0006",zIndex:88,backdropFilter:"blur(2px)"}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
-        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);}}
+        aktivVermietung={vermietungen.filter(v=>v.status==="Aktiv").length}
+        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);setVermietungen([]);}}
         isMobile={isMobile} onClose={()=>setSidebarOffen(false)}/>}
       {/* Hamburger — sadece sidebar kapalıyken göster */}
       {!sidebarOffen&&<button onClick={()=>setSidebarOffen(true)}
@@ -1001,6 +1069,19 @@ export default function DrahteselApp() {
           onGuncelle={async(e)=>{try{await envanterAktualisieren(e);showToast("Güncellendi!");}catch(err){showToast("Hata","err");}}}
           onSil={async(id)=>{try{await envanterLoeschen(id);showToast("Silindi.");}catch(err){showToast("Hata","err");}}}
         />}
+        {screen==="vermietung"&&<VermietungScreen
+          vermietungen={vermietungen}
+          kunden={kunden}
+          envanter={envanter}
+          isMobile={isMobile}
+          showToast={showToast}
+          showConfirm={showConfirm}
+          firma={(()=>{try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{};}catch{return{};}})()}
+          onEkle={async(v)=>{try{const neu=await vermietungHinzufuegen(v);showToast("Vermietung erstellt!");return neu;}catch(err){showToast("Hata: "+err.message,"err");throw err;}}}
+          onStatus={async(id,s)=>{try{await vermietungStatusAendern(id,s);showToast(s==="Zurückgegeben"?"Zurückgegeben ✓":"Aktualisiert!");}catch(err){showToast("Hata","err");}}}
+          onGuncelle={async(v)=>{try{await vermietungAktualisieren(v);showToast("Gespeichert!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onSil={async(id)=>{try{await vermietungLoeschen(id);showToast("Gelöscht.");}catch(err){showToast("Hata","err");}}}
+        />}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden}/>}
         {screen==="neu-auftrag-quick"&&<QuickAuftragScreen
           kunden={kunden}
@@ -1120,7 +1201,7 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
     </div>
   );
 }
-function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}){
+function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose,aktivVermietung}){
   const offene=auftraege.filter(a=>!["Abgerechnet","Abgeholt"].includes(a.status)).length;
   const nav=[
     {id:"dashboard",label:"Dashboard",icon:"⊞"},
@@ -1129,6 +1210,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose}
     {id:"rechnungen",label:"Bescheinigungen",icon:"🧾"},
     {id:"raporlama",label:"Raporlama",icon:"📊"},
     {id:"envanter",label:"Fahrrad-Lager",icon:"🏪"},
+    {id:"vermietung",label:"Vermietung",icon:"🔑",badge:aktivVermietung||null},
     {id:"katalog",label:"Leistungskatalog",icon:"📋"},
     {id:"einstellungen",label:"Einstellungen",icon:"⚙"},
   ];
@@ -3661,6 +3743,388 @@ function QuickAuftragScreen({kunden,bisikletler,onKundeWaehle,onNeuKunde,onAbbru
         })}
         {!gefiltert.length&&<div style={{textAlign:"center",padding:32,color:COLORS.muted}}>Kein Kunde gefunden.</div>}
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FAHRRAD-VERMIETUNG (BİSİKLET KİRALAMA)
+// ═══════════════════════════════════════════════════════════════════════════════
+const VERMIET_STATUS = {
+  "Aktiv":          {farbe:"#16a34a", bg:"#16a34a22", label:"🟢 Aktiv"},
+  "Zurückgegeben":  {farbe:"#5a7a9a", bg:"#5a7a9a22", label:"✓ Zurückgegeben"},
+  "Überfällig":     {farbe:"#dc2626", bg:"#dc262622", label:"⚠️ Überfällig"},
+};
+
+function tageZwischen(von,bis){
+  const d1=parseDatum(von), d2=parseDatum(bis);
+  if(!d1||!d2)return 1;
+  const diff=Math.round((d2-d1)/86400000);
+  return Math.max(1,diff);
+}
+
+function VermietungScreen({vermietungen,kunden,envanter,isMobile,showToast,showConfirm,firma,onEkle,onStatus,onGuncelle,onSil}){
+  const [ansicht,setAnsicht]=useState("liste"); // liste | neu | detail
+  const [selV,setSelV]=useState(null);
+  const [filter,setFilter]=useState("Aktiv");
+  const [suche,setSuche]=useState("");
+
+  const heuteStr=heute();
+  // Überfällig kontrolü — bitiş tarihi geçmiş ama iade edilmemiş
+  const gefiltert=useMemo(()=>{
+    return [...vermietungen]
+      .map(v=>{
+        if(v.status==="Aktiv"&&v.bisDatum&&tageSeit(v.bisDatum)>0) return {...v,_ueberfaellig:true};
+        return v;
+      })
+      .sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0))
+      .filter(v=>filter==="alle"||v.status===filter)
+      .filter(v=>!suche||`${v.nummer} ${v.mieterName||""} ${v.fahrrad||""}`.toLowerCase().includes(suche.toLowerCase()));
+  },[vermietungen,filter,suche]);
+
+  if(ansicht==="neu") return <VermietungForm
+    kunden={kunden} envanter={envanter} isMobile={isMobile} showToast={showToast}
+    onSave={async(v)=>{const neu=await onEkle(v);setSelV(neu);setAnsicht("detail");}}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  if(ansicht==="detail"&&selV) return <VermietungDetail
+    vermietung={selV} firma={firma} isMobile={isMobile} showConfirm={showConfirm}
+    onStatus={async(id,s)=>{await onStatus(id,s);setSelV(p=>({...p,status:s,rueckDatum:s==="Zurückgegeben"?heute():p.rueckDatum}));}}
+    onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  const aktivAnzahl=vermietungen.filter(v=>v.status==="Aktiv").length;
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700}}>🔑 Fahrrad-Vermietung</h2>
+          <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{aktivAnzahl} aktiv · {vermietungen.length} gesamt</div>
+        </div>
+        <button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Neue Vermietung</button>
+      </div>
+
+      {/* Arama */}
+      <div style={{position:"relative",marginBottom:10}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <input placeholder="Suchen (Nr, Name, Fahrrad)…" value={suche} onChange={e=>setSuche(e.target.value)}
+          style={{...inputStyle,paddingLeft:42}}/>
+        {suche&&<button onClick={()=>setSuche("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
+      </div>
+
+      {/* Filtre */}
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {["Aktiv","Zurückgegeben","alle"].map(s=>(
+          <button key={s} onClick={()=>setFilter(s)}
+            style={{padding:"6px 16px",borderRadius:20,border:`1px solid ${filter===s?COLORS.accent:COLORS.border}`,
+              background:filter===s?COLORS.accent:"transparent",color:filter===s?"#fff":COLORS.muted,
+              cursor:"pointer",fontSize:13,fontWeight:filter===s?600:400}}>
+            {s==="alle"?"Alle":VERMIET_STATUS[s]?.label||s}
+          </button>
+        ))}
+      </div>
+
+      {/* Liste */}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {gefiltert.map(v=>{
+          const vs=VERMIET_STATUS[v._ueberfaellig?"Überfällig":v.status]||VERMIET_STATUS.Aktiv;
+          return(
+            <div key={v.id} onClick={()=>{setSelV(v);setAnsicht("detail");}}
+              style={{background:COLORS.card,border:`2px solid ${v._ueberfaellig?COLORS.red:v.status==="Aktiv"?COLORS.green+"66":COLORS.border}`,
+                borderRadius:10,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:12}}>#{v.nummer}</span>
+                  <span style={{fontWeight:600}}>{v.mieterName}</span>
+                  <span style={{...vs,fontSize:10,fontWeight:700,background:vs.bg,color:vs.farbe,borderRadius:8,padding:"1px 8px"}}>{vs.label}</span>
+                </div>
+                <div style={{color:COLORS.muted,fontSize:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <span>🚲 {v.fahrrad}</span>
+                  <span>·</span>
+                  <span>{formatDatum(v.vonDatum)} – {formatDatum(v.bisDatum)}</span>
+                  {v.preis&&<><span>·</span><span style={{fontWeight:600,color:COLORS.text}}>{formatEuro(v.preis)}</span></>}
+                </div>
+              </div>
+              <span style={{color:COLORS.muted,fontSize:18}}>›</span>
+            </div>
+          );
+        })}
+        {!gefiltert.length&&(
+          <div style={{textAlign:"center",padding:40,color:COLORS.muted}}>
+            {vermietungen.length===0?"Noch keine Vermietungen.":"Keine Treffer."}
+            {vermietungen.length===0&&<div style={{marginTop:12}}><button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Erste Vermietung</button></div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VermietungForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
+  const [saving,setSaving]=useState(false);
+  const [kundeSuche,setKundeSuche]=useState("");
+  const [form,setForm]=useState({
+    mieterName:"", telefon:"", adresse:"",
+    ausweisArt:"Personalausweis", ausweisNr:"",
+    fahrrad:"", rahmennummer:"",
+    vonDatum:heute(), bisDatum:heute(),
+    tagespreis:"", preis:"",
+    kaution:"", kautionArt:"Keine",
+    zubehoer:"", zustand:"", notizen:"",
+  });
+  const F=(k,v)=>setForm(p=>{
+    const n={...p,[k]:v};
+    // Fiyat otomatik hesapla: gün sayısı × günlük fiyat
+    if(k==="vonDatum"||k==="bisDatum"||k==="tagespreis"){
+      const tage=tageZwischen(n.vonDatum,n.bisDatum);
+      const tp=parseFloat(n.tagespreis)||0;
+      if(tp>0)n.preis=(tage*tp).toFixed(2);
+    }
+    return n;
+  });
+
+  const kundenGefiltert=kundeSuche?[...kunden]
+    .filter(k=>`${k.vorname} ${k.nachname} ${k.telefon||""}`.toLowerCase().includes(kundeSuche.toLowerCase()))
+    .slice(0,5):[];
+
+  const tage=tageZwischen(form.vonDatum,form.bisDatum);
+
+  async function speichern(){
+    if(!form.mieterName){showToast("Bitte Mieter-Name eingeben.","err");return;}
+    if(!form.telefon){showToast("Bitte Telefonnummer eingeben.","err");return;}
+    if(!form.fahrrad){showToast("Bitte Fahrrad angeben.","err");return;}
+    setSaving(true);
+    try{ await onSave(form); }
+    catch(err){ showToast("Fehler: "+(err.message||"Speichern fehlgeschlagen"),"err"); setSaving(false); }
+  }
+
+  return(
+    <div style={{maxWidth:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{fontSize:20,fontWeight:700}}>🔑 Neue Vermietung</h2>
+        <button onClick={onAbbruch} style={btnSecondary}>✕</button>
+      </div>
+
+      {/* MIETER */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>👤 MIETER</div>
+        {/* Mevcut müşteriden seç */}
+        <div style={{position:"relative",marginBottom:10}}>
+          <input placeholder="Bestandskunde suchen (optional)…" value={kundeSuche}
+            onChange={e=>setKundeSuche(e.target.value)} style={inputStyle}/>
+          {kundenGefiltert.length>0&&(
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,marginTop:4,zIndex:10,boxShadow:"0 4px 16px #0002",maxHeight:200,overflowY:"auto"}}>
+              {kundenGefiltert.map(k=>(
+                <div key={k.id} onClick={()=>{
+                  setForm(p=>({...p,mieterName:`${k.vorname} ${k.nachname}`,telefon:k.telefon||"",adresse:`${k.strasse||""} ${k.hausnummer||""}, ${k.plz||""} ${k.ort||""}`.trim()}));
+                  setKundeSuche("");
+                }} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}
+                onMouseEnter={e=>e.currentTarget.style.background=COLORS.card}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <strong>{k.nachname}, {k.vorname}</strong> {k.telefon&&<span style={{color:COLORS.muted}}>· {k.telefon}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+          <input placeholder="Name des Mieters *" value={form.mieterName} onChange={e=>F("mieterName",e.target.value)} style={inputStyle}/>
+          <input placeholder="Telefon *" type="tel" value={form.telefon} onChange={e=>F("telefon",e.target.value)} style={inputStyle}/>
+        </div>
+        <input placeholder="Adresse" value={form.adresse} onChange={e=>F("adresse",e.target.value)} style={{...inputStyle,marginBottom:10}}/>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+          <select value={form.ausweisArt} onChange={e=>F("ausweisArt",e.target.value)} style={inputStyle}>
+            {["Personalausweis","Reisepass","Führerschein","Anderer"].map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          <input placeholder="Ausweis-Nr." value={form.ausweisNr} onChange={e=>F("ausweisNr",e.target.value)} style={inputStyle}/>
+        </div>
+      </div>
+
+      {/* FAHRRAD */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD</div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+          <input placeholder="Fahrrad (Marke/Modell) *" value={form.fahrrad} onChange={e=>F("fahrrad",e.target.value)} style={inputStyle}/>
+          <input placeholder="Rahmennummer" value={form.rahmennummer} onChange={e=>F("rahmennummer",e.target.value)} style={inputStyle}/>
+        </div>
+        <input placeholder="Zubehör (Helm, Schloss, Licht…)" value={form.zubehoer} onChange={e=>F("zubehoer",e.target.value)} style={{...inputStyle,marginTop:10}}/>
+        <input placeholder="Zustand bei Übergabe (z.B. leichte Kratzer)" value={form.zustand} onChange={e=>F("zustand",e.target.value)} style={{...inputStyle,marginTop:10}}/>
+      </div>
+
+      {/* ZEITRAUM & PREIS */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>📅 ZEITRAUM & PREIS</div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr auto",gap:10,alignItems:"end"}}>
+          <div><label style={labelStyle}>Von</label><input type="date" value={toISODate(form.vonDatum)} onChange={e=>F("vonDatum",fromISODate(e.target.value))} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Bis</label><input type="date" value={toISODate(form.bisDatum)} onChange={e=>F("bisDatum",fromISODate(e.target.value))} style={inputStyle}/></div>
+          <div style={{textAlign:"center",padding:"8px 12px",background:COLORS.accent+"18",borderRadius:8,color:COLORS.accent,fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{tage} {tage===1?"Tag":"Tage"}</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginTop:10}}>
+          <div><label style={labelStyle}>Tagespreis (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.tagespreis} onChange={e=>F("tagespreis",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Gesamtpreis (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.preis} onChange={e=>F("preis",e.target.value)} style={{...inputStyle,fontWeight:700}}/></div>
+        </div>
+      </div>
+
+      {/* KAUTION */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🔒 KAUTION (optional)</div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+          <select value={form.kautionArt} onChange={e=>F("kautionArt",e.target.value)} style={inputStyle}>
+            {["Keine","Bar","Ausweis hinterlegt","EC/Kreditkarte","Anderes"].map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          {form.kautionArt==="Bar"&&<input type="number" step="0.01" placeholder="Kautionsbetrag (€)" value={form.kaution} onChange={e=>F("kaution",e.target.value)} style={inputStyle}/>}
+        </div>
+      </div>
+
+      {/* NOTIZEN */}
+      <textarea placeholder="Anmerkungen…" value={form.notizen} onChange={e=>F("notizen",e.target.value)}
+        rows={2} style={{...inputStyle,resize:"vertical",marginBottom:16}}/>
+
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={onAbbruch} style={{...btnSecondary,flex:1}}>Abbrechen</button>
+        <button disabled={saving} onClick={speichern} style={{...btnPrimary,flex:2,opacity:saving?.6:1}}>
+          {saving?"Wird gespeichert…":"✓ Vermietung erstellen"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,onAbbruch}){
+  const printRef=useRef();
+  const v=vermietung;
+  const vs=VERMIET_STATUS[v.status]||VERMIET_STATUS.Aktiv;
+  const tage=tageZwischen(v.vonDatum,v.bisDatum);
+
+  function drucken(){
+    if(!printRef.current)return;
+    const win=window.open("","_blank");
+    if(!win)return;
+    win.document.write(`<html><head><title>Mietvertrag ${v.nummer}</title>
+      <style>
+        body{font-family:sans-serif;color:#111;padding:${isMobile?16:36}px;line-height:1.5;font-size:13px;}
+        h1{color:#1a56a0;font-size:22px;margin-bottom:2px;}
+        .sub{color:#666;font-size:12px;margin-bottom:20px;}
+        .box{border:1px solid #ccc;border-radius:8px;padding:12px 16px;margin-bottom:12px;}
+        .label{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600;}
+        .row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;}
+        .row span:first-child{color:#555;}
+        .row span:last-child{font-weight:500;text-align:right;}
+        .agb{font-size:10px;color:#666;line-height:1.5;margin-top:8px;}
+        .sign{display:flex;justify-content:space-between;margin-top:40px;gap:40px;}
+        .sign div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:11px;color:#555;text-align:center;}
+        .total{background:#1a56a012;border-radius:8px;padding:10px 16px;display:flex;justify-content:space-between;font-weight:700;font-size:15px;color:#1a56a0;}
+      </style></head><body>
+      <h1>Mietvertrag / Fahrrad-Vermietung</h1>
+      <div class="sub">Vertrag Nr. ${v.nummer} · ${firma&&firma.name?firma.name:"Drahtesel Plus"} · Erstellt: ${v.erstellt}</div>
+
+      <div class="box">
+        <div class="label">Mieter</div>
+        <div class="row"><span>Name:</span><span>${v.mieterName||"—"}</span></div>
+        <div class="row"><span>Telefon:</span><span>${v.telefon||"—"}</span></div>
+        ${v.adresse?`<div class="row"><span>Adresse:</span><span>${v.adresse}</span></div>`:""}
+        <div class="row"><span>Ausweis:</span><span>${v.ausweisArt||"—"} ${v.ausweisNr?"Nr. "+v.ausweisNr:""}</span></div>
+      </div>
+
+      <div class="box">
+        <div class="label">Fahrrad</div>
+        <div class="row"><span>Fahrrad:</span><span>${v.fahrrad||"—"}</span></div>
+        ${v.rahmennummer?`<div class="row"><span>Rahmennummer:</span><span>${v.rahmennummer}</span></div>`:""}
+        ${v.zubehoer?`<div class="row"><span>Zubehör:</span><span>${v.zubehoer}</span></div>`:""}
+        ${v.zustand?`<div class="row"><span>Zustand bei Übergabe:</span><span>${v.zustand}</span></div>`:""}
+      </div>
+
+      <div class="box">
+        <div class="label">Mietzeitraum</div>
+        <div class="row"><span>Von:</span><span>${v.vonDatum||"—"}</span></div>
+        <div class="row"><span>Bis:</span><span>${v.bisDatum||"—"}</span></div>
+        <div class="row"><span>Dauer:</span><span>${tage} ${tage===1?"Tag":"Tage"}</span></div>
+        ${v.kautionArt&&v.kautionArt!=="Keine"?`<div class="row"><span>Kaution:</span><span>${v.kautionArt}${v.kaution?" ("+formatEuro(v.kaution)+")":""}</span></div>`:""}
+      </div>
+
+      <div class="total"><span>Mietpreis gesamt:</span><span>${formatEuro(v.preis||0)}</span></div>
+
+      <div class="box" style="margin-top:16px;">
+        <div class="label">Mietbedingungen (AGB)</div>
+        <div class="agb">
+          1. Der Mieter bestätigt, das Fahrrad in ordnungsgemäßem und verkehrssicherem Zustand erhalten zu haben.<br/>
+          2. Das Fahrrad ist pfleglich zu behandeln und zum vereinbarten Zeitpunkt zurückzugeben.<br/>
+          3. Bei Beschädigung, Verlust oder Diebstahl haftet der Mieter in voller Höhe des Zeitwerts.<br/>
+          4. Eine verspätete Rückgabe wird mit dem vereinbarten Tagespreis je angefangenem Tag berechnet.<br/>
+          5. Der Mieter fährt auf eigene Gefahr. Der Vermieter haftet nicht für Unfälle oder Schäden Dritter.<br/>
+          6. Das Fahrrad darf nicht an Dritte weitergegeben werden.<br/>
+          7. Die Kaution wird bei ordnungsgemäßer Rückgabe vollständig erstattet.
+        </div>
+      </div>
+
+      <div class="sign">
+        <div>Ort, Datum</div>
+        <div>Unterschrift Mieter</div>
+        <div>Unterschrift Vermieter</div>
+      </div>
+      </body></html>`);
+    win.document.close();
+    setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
+  }
+
+  return(
+    <div style={{maxWidth:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
+          <h2 style={{fontSize:20,fontWeight:700}}>Vermietung #{v.nummer}</h2>
+          <span style={{background:vs.bg,color:vs.farbe,borderRadius:8,padding:"3px 10px",fontSize:12,fontWeight:700}}>{vs.label}</span>
+        </div>
+        <button onClick={drucken} style={btnPrimary}>🖨️ Mietvertrag drucken</button>
+      </div>
+
+      {/* STATUS AKSIYONLARI */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>STATUS</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {v.status==="Aktiv"&&(
+            <button onClick={()=>showConfirm("Fahrrad wurde zurückgegeben?",()=>onStatus(v.id,"Zurückgegeben"),{icon:"✓",okLabel:"Zurückgegeben",okColor:COLORS.green})}
+              style={{...btnPrimary,background:COLORS.green}}>✓ Rückgabe bestätigen</button>
+          )}
+          {v.status==="Zurückgegeben"&&(
+            <button onClick={()=>showConfirm("Wieder auf 'Aktiv' setzen?",()=>onStatus(v.id,"Aktiv"),{icon:"↩️",okLabel:"Aktivieren",okColor:COLORS.orange})}
+              style={{...btnSecondary,color:COLORS.orange,borderColor:COLORS.orange}}>↩️ Wieder aktivieren</button>
+          )}
+          <button onClick={()=>showConfirm("Vermietung wirklich löschen?",()=>onSil(v.id),{icon:"🗑️",okLabel:"Löschen"})}
+            style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Löschen</button>
+        </div>
+      </div>
+
+      {/* Ekranda özet */}
+      <div ref={printRef} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px"}}>
+        <VDetailRow label="Mieter" wert={v.mieterName}/>
+        <VDetailRow label="Telefon" wert={v.telefon}/>
+        {v.adresse&&<VDetailRow label="Adresse" wert={v.adresse}/>}
+        <VDetailRow label="Ausweis" wert={`${v.ausweisArt||"—"} ${v.ausweisNr?"· "+v.ausweisNr:""}`}/>
+        <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
+        <VDetailRow label="Fahrrad" wert={v.fahrrad}/>
+        {v.rahmennummer&&<VDetailRow label="Rahmennummer" wert={v.rahmennummer}/>}
+        {v.zubehoer&&<VDetailRow label="Zubehör" wert={v.zubehoer}/>}
+        {v.zustand&&<VDetailRow label="Zustand" wert={v.zustand}/>}
+        <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
+        <VDetailRow label="Zeitraum" wert={`${formatDatum(v.vonDatum)} – ${formatDatum(v.bisDatum)} (${tage} ${tage===1?"Tag":"Tage"})`}/>
+        {v.rueckDatum&&<VDetailRow label="Zurückgegeben am" wert={formatDatum(v.rueckDatum)}/>}
+        {v.kautionArt&&v.kautionArt!=="Keine"&&<VDetailRow label="Kaution" wert={`${v.kautionArt}${v.kaution?" ("+formatEuro(v.kaution)+")":""}`}/>}
+        {v.notizen&&<VDetailRow label="Anmerkungen" wert={v.notizen}/>}
+        <div style={{marginTop:12,padding:"12px 16px",background:COLORS.accent+"12",borderRadius:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:16,color:COLORS.accent}}>
+          <span>Mietpreis gesamt:</span><span>{formatEuro(v.preis||0)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VDetailRow({label,wert}){
+  return(
+    <div style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:14,gap:12}}>
+      <span style={{color:COLORS.muted,flexShrink:0}}>{label}:</span>
+      <span style={{fontWeight:500,textAlign:"right",wordBreak:"break-word"}}>{wert||"—"}</span>
     </div>
   );
 }
