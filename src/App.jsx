@@ -3836,7 +3836,8 @@ const VERMIET_STATUS = {
 function tageZwischen(von,bis){
   const d1=parseDatum(von), d2=parseDatum(bis);
   if(!d1||!d2)return 1;
-  const diff=Math.round((d2-d1)/86400000);
+  // İlk gün de dahil: aynı gün = 1 Tag, ertesi gün = 2 Tage
+  const diff=Math.round((d2-d1)/86400000)+1;
   return Math.max(1,diff);
 }
 
