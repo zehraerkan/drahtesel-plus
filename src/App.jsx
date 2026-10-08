@@ -512,6 +512,7 @@ function rowToBenutzer(r){return{...r.data,id:r.id};}
 function rowToEnvanter(r){return{...r.data,id:r.id,durum:r.durum||(r.data&&r.data.durum)||"Im Laden",erstellt:r.erstellt};}
 function rowToVermietung(r){return{...r.data,id:r.id,status:r.status||(r.data&&r.data.status)||"Aktiv",erstellt:r.erstellt};}
 function rowToMietrad(r){return{...r.data,id:r.id,status:r.status||(r.data&&r.data.status)||"Verfügbar",erstellt:r.erstellt};}
+function rowToVerkauf(r){return{...r.data,id:r.id,status:r.status||(r.data&&r.data.status)||"Abgeschlossen",erstellt:r.erstellt};}
 
 // ─── HAUPTKOMPONENTE ─────────────────────────────────────────────────────────
 export default function DrahteselApp() {
@@ -535,6 +536,7 @@ export default function DrahteselApp() {
   const [envanter,setEnvanter]=useState([]);
   const [vermietungen,setVermietungen]=useState([]);
   const [mietraeder,setMietraeder]=useState([]);
+  const [verkaeufe,setVerkaeufe]=useState([]);
   const [bisikletler,setBisikletler]=useState([]);
   const [auftraege,setAuftraege]=useState([]);
   const [rechnungen,setRechnungen]=useState([]);
@@ -630,8 +632,8 @@ export default function DrahteselApp() {
     if (!benutzer) return;
     setLaden(true);
     try {
-      const [kR,bR,aR,rR,eR,vR,mR] = await Promise.all([
-        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"), dbGet("vermietungen"), dbGet("mietraeder"),
+      const [kR,bR,aR,rR,eR,vR,mR,vkR] = await Promise.all([
+        dbGet("kunden"), dbGet("bisikletler"), dbGet("auftraege"), dbGet("rechnungen"), dbGet("envanter"), dbGet("vermietungen"), dbGet("mietraeder"), dbGet("verkaeufe"),
       ]);
       const neueKunden=kR.map(rowToKunde);
       const neueAuftraege=aR.map(rowToAuftrag);
@@ -642,6 +644,7 @@ export default function DrahteselApp() {
       setEnvanter(eR.map(rowToEnvanter));
       setVermietungen((vR||[]).map(rowToVermietung));
       setMietraeder((mR||[]).map(rowToMietrad));
+      setVerkaeufe((vkR||[]).map(rowToVerkauf));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
       setSelAuftrag(prev=>prev?neueAuftraege.find(a=>a.id===prev.id)||prev:null);
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
@@ -857,6 +860,46 @@ export default function DrahteselApp() {
     setMietraeder(p=>p.filter(x=>x.id!==id));
   }
 
+  async function verkaufHinzufuegen(vk) {
+    const id=genId(); const erstellt=heute();
+    let nummer=null;
+    try{
+      const r=await fetchWithAuth(`${SUPA_URL}/rest/v1/rpc/naechste_verkauf_nr`,{
+        method:"POST",headers:getHeaders(),body:"{}"
+      });
+      if(r.ok){const val=await r.json();if(val)nummer=String(val).replace(/"/g,"");}
+    }catch{}
+    if(!nummer){
+      const maxNr=verkaeufe.reduce((m,x)=>Math.max(m,parseInt(x.nummer)||0),0);
+      nummer=String(maxNr+1).padStart(4,"0");
+    }
+    const status="Abgeschlossen";
+    const neu={...vk,id,nummer,erstellt,status};
+    const dataObj={...vk,nummer,status};
+    try{ await dbInsert("verkaeufe",{id,status,erstellt,data:dataObj}); }
+    catch(err){ await dbInsert("verkaeufe",{id,erstellt,data:dataObj}); }
+    setVerkaeufe(p=>[neu,...p]);
+    // Envanterden geldiyse "Satıldı" yap
+    if(vk.envanterId){
+      try{
+        const item=envanter.find(e=>e.id===vk.envanterId);
+        if(item)await envanterAktualisieren({...item,durum:"Satıldı"});
+      }catch{}
+    }
+    return neu;
+  }
+  async function verkaufAktualisieren(vk) {
+    const {id,status,erstellt,...rest}=vk;
+    const data={...rest,status};
+    try{ await dbUpdate("verkaeufe",id,{status,data}); }
+    catch(err){ await dbUpdate("verkaeufe",id,{data}); }
+    setVerkaeufe(p=>p.map(x=>x.id===id?vk:x));
+  }
+  async function verkaufLoeschen(id) {
+    await dbDelete("verkaeufe",id);
+    setVerkaeufe(p=>p.filter(x=>x.id!==id));
+  }
+
   async function rechnungLoeschen(id) {
     await dbDelete("rechnungen",id);
     setRechnungen(p=>p.filter(x=>x.id!==id));
@@ -958,7 +1001,7 @@ export default function DrahteselApp() {
       {sidebarOffen&&isMobile&&<div onClick={()=>setSidebarOffen(false)} style={{position:"fixed",inset:0,background:"#0006",zIndex:88,backdropFilter:"blur(2px)"}}/>}
       {sidebarOffen&&<Sidebar screen={screen} setScreen={(s)=>{setScreen(s);if(isMobile)setSidebarOffen(false);}} benutzer={benutzer} auftraege={auftraege}
         aktivVermietung={vermietungen.filter(v=>v.status==="Aktiv").length}
-        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);setVermietungen([]);setMietraeder([]);}}
+        onLogout={async()=>{await supaSignOut();setBenutzer(null);setScreen("login");setKunden([]);setAuftraege([]);setRechnungen([]);setBisikletler([]);setEnvanter([]);setVermietungen([]);setMietraeder([]);setVerkaeufe([]);}}
         isMobile={isMobile} onClose={()=>setSidebarOffen(false)}/>}
       {/* Hamburger — sadece sidebar kapalıyken göster */}
       {!sidebarOffen&&<button onClick={()=>setSidebarOffen(true)}
@@ -1158,6 +1201,18 @@ export default function DrahteselApp() {
           onStatus={async(id,s)=>{try{await mietradStatusAendern(id,s);showToast("Status geändert.");}catch(err){showToast("Hata","err");}}}
           onSil={async(id)=>{try{await mietradLoeschen(id);showToast("Gelöscht.");}catch(err){showToast("Hata","err");}}}
         />}
+        {screen==="verkauf"&&<VerkaufScreen
+          verkaeufe={verkaeufe}
+          kunden={kunden}
+          envanter={envanter}
+          isMobile={isMobile}
+          showToast={showToast}
+          showConfirm={showConfirm}
+          firma={(()=>{try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{};}catch{return{};}})()}
+          onEkle={async(vk)=>{try{const neu=await verkaufHinzufuegen(vk);showToast("Verkauf gespeichert!");return neu;}catch(err){showToast("Hata: "+err.message,"err");throw err;}}}
+          onGuncelle={async(vk)=>{try{await verkaufAktualisieren(vk);showToast("Gespeichert!");}catch(err){showToast("Hata: "+err.message,"err");}}}
+          onSil={async(id)=>{try{await verkaufLoeschen(id);showToast("Gelöscht.");}catch(err){showToast("Hata","err");}}}
+        />}
         {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden} vermietungen={vermietungen}/>}
         {screen==="neu-auftrag-quick"&&<QuickAuftragScreen
           kunden={kunden}
@@ -1286,6 +1341,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose,
     {id:"rechnungen",label:"Bescheinigungen",icon:"🧾"},
     {id:"raporlama",label:"Raporlama",icon:"📊"},
     {id:"envanter",label:"Fahrrad-Lager",icon:"🏪"},
+    {id:"verkauf",label:"Verkauf",icon:"💰"},
     {id:"vermietung",label:"Vermietung",icon:"🔑",badge:aktivVermietung||null},
     {id:"mietraeder",label:"Mieträder",icon:"🚲"},
     {id:"katalog",label:"Leistungskatalog",icon:"📋"},
@@ -4496,6 +4552,432 @@ function MietradForm({mietrad,isMobile,showToast,onSave,onAbbruch}){
         <button disabled={saving} onClick={speichern} style={{...btnPrimary,flex:2,opacity:saving?.6:1}}>
           {saving?"Wird gespeichert…":isEdit?"💾 Speichern":"✓ Hinzufügen"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VERKÄUFE (BİSİKLET SATIŞLARI)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Standart ekstra parça listesi — fiyatlar sadece öneri, değiştirilebilir
+const ZUBEHOER_VORLAGE = [
+  {name:"Licht-Set (vorne/hinten)", preis:"24.90"},
+  {name:"Dynamo (Nabendynamo)", preis:"49.90"},
+  {name:"Gepäckträger", preis:"29.90"},
+  {name:"Schutzblech-Set", preis:"24.90"},
+  {name:"Fahrradschloss", preis:"34.90"},
+  {name:"Klingel", preis:"7.90"},
+  {name:"Seitenständer", preis:"14.90"},
+  {name:"Korb / Box", preis:"29.90"},
+  {name:"Handyhalterung", preis:"19.90"},
+  {name:"Luftpumpe", preis:"12.90"},
+];
+
+function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm,firma,onEkle,onGuncelle,onSil}){
+  const [ansicht,setAnsicht]=useState("liste");
+  const [selVk,setSelVk]=useState(null);
+  const [suche,setSuche]=useState("");
+
+  const gefiltert=useMemo(()=>{
+    return [...verkaeufe]
+      .sort((a,b)=>(parseInt(b.nummer)||0)-(parseInt(a.nummer)||0))
+      .filter(vk=>!suche||`${vk.nummer} ${vk.kundeName||""} ${vk.marke||""} ${vk.modell||""} ${vk.rahmennummer||""}`.toLowerCase().includes(suche.toLowerCase()));
+  },[verkaeufe,suche]);
+
+  if(ansicht==="neu") return <VerkaufForm
+    kunden={kunden} envanter={envanter} isMobile={isMobile} showToast={showToast}
+    onSave={async(vk)=>{const neu=await onEkle(vk);setSelVk(neu);setAnsicht("detail");}}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  if(ansicht==="detail"&&selVk) return <VerkaufDetail
+    verkauf={selVk} firma={firma} isMobile={isMobile} showConfirm={showConfirm}
+    onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
+    onAbbruch={()=>setAnsicht("liste")}/>;
+
+  const gesamtUmsatz=verkaeufe.reduce((s,vk)=>s+(+vk.gesamtpreis||0),0);
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div>
+          <h2 style={{fontSize:20,fontWeight:700}}>💰 Verkäufe</h2>
+          <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{verkaeufe.length} Verkäufe · {formatEuro(gesamtUmsatz)} gesamt</div>
+        </div>
+        <button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Neuer Verkauf</button>
+      </div>
+
+      <div style={{position:"relative",marginBottom:16}}>
+        <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",color:COLORS.muted,fontSize:15,pointerEvents:"none"}}>🔍</span>
+        <input placeholder="Suchen (Nr, Kunde, Marke, Rahmen)…" value={suche} onChange={e=>setSuche(e.target.value)} style={{...inputStyle,paddingLeft:42}}/>
+        {suche&&<button onClick={()=>setSuche("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:COLORS.muted,cursor:"pointer",fontSize:20,padding:0}}>×</button>}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {gefiltert.map(vk=>(
+          <div key={vk.id} onClick={()=>{setSelVk(vk);setAnsicht("detail");}}
+            style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
+                <span style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent,fontSize:12}}>#{vk.nummer}</span>
+                <span style={{fontWeight:600}}>{vk.marke} {vk.modell}</span>
+              </div>
+              <div style={{color:COLORS.muted,fontSize:12,display:"flex",gap:8,flexWrap:"wrap"}}>
+                <span>👤 {vk.kundeName||"—"}</span>
+                <span>·</span>
+                <span>{formatDatum(vk.erstellt)}</span>
+                {(vk.zubehoer||[]).length>0&&<><span>·</span><span>🔧 {(vk.zubehoer||[]).length} Teile</span></>}
+              </div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontWeight:700,color:COLORS.accent,fontSize:15}}>{formatEuro(vk.gesamtpreis||0)}</div>
+            </div>
+          </div>
+        ))}
+        {!gefiltert.length&&(
+          <div style={{textAlign:"center",padding:40,color:COLORS.muted}}>
+            {verkaeufe.length===0?"Noch keine Verkäufe.":"Keine Treffer."}
+            {verkaeufe.length===0&&<div style={{marginTop:12}}><button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Ersten Verkauf anlegen</button></div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
+  const [saving,setSaving]=useState(false);
+  const [kundeSuche,setKundeSuche]=useState("");
+  const [form,setForm]=useState({
+    kundeName:"", telefon:"", adresse:"", email:"",
+    envanterId:"",
+    marke:"", modell:"", typ:"", rahmennummer:"", rahmengroesse:"", farbe:"",
+    fahrradPreis:"",
+    zubehoer:[],
+    rabatt:"",
+    zahlungsart:"Bar",
+    garantie:"24", notizen:"",
+    gesamtpreis:"",
+  });
+
+  function recalc(n){
+    const fp=parseFloat(n.fahrradPreis)||0;
+    const zub=(n.zubehoer||[]).reduce((s,z)=>s+(parseFloat(z.preis)||0),0);
+    const rabatt=parseFloat(n.rabatt)||0;
+    n.gesamtpreis=Math.max(0,(fp+zub-rabatt)).toFixed(2);
+    return n;
+  }
+  const F=(k,v)=>setForm(p=>recalc({...p,[k]:v}));
+
+  // Zubehör işlemleri
+  function zubToggle(vorlage){
+    setForm(p=>{
+      const exists=p.zubehoer.find(z=>z.name===vorlage.name);
+      const zubehoer=exists
+        ? p.zubehoer.filter(z=>z.name!==vorlage.name)
+        : [...p.zubehoer,{name:vorlage.name,preis:vorlage.preis}];
+      return recalc({...p,zubehoer});
+    });
+  }
+  function zubPreis(idx,preis){
+    setForm(p=>recalc({...p,zubehoer:p.zubehoer.map((z,i)=>i===idx?{...z,preis}:z)}));
+  }
+  function zubManuell(){
+    setForm(p=>({...p,zubehoer:[...p.zubehoer,{name:"",preis:""}]}));
+  }
+  function zubName(idx,name){
+    setForm(p=>({...p,zubehoer:p.zubehoer.map((z,i)=>i===idx?{...z,name}:z)}));
+  }
+  function zubEntfernen(idx){
+    setForm(p=>recalc({...p,zubehoer:p.zubehoer.filter((_,i)=>i!==idx)}));
+  }
+
+  // Envanterden seç
+  const verfuegbarEnvanter=(envanter||[]).filter(e=>["Im Laden","Im Lager","Satışa hazır"].includes(e.durum));
+  function ausEnvanter(eId){
+    if(!eId){F("envanterId","");return;}
+    const e=verfuegbarEnvanter.find(x=>x.id===eId);
+    if(!e)return;
+    setForm(p=>recalc({...p,
+      envanterId:e.id,
+      marke:e.marke||"", modell:e.modell||"", typ:e.typ||"",
+      rahmennummer:e.rahmennummer||"", rahmengroesse:e.rahmengroesse||"", farbe:e.farbe||"",
+      fahrradPreis:e.preis||p.fahrradPreis,
+    }));
+  }
+
+  const kundenGefiltert=kundeSuche?[...kunden]
+    .filter(k=>`${k.vorname} ${k.nachname} ${k.telefon||""}`.toLowerCase().includes(kundeSuche.toLowerCase()))
+    .slice(0,5):[];
+
+  const zwischensumme=(parseFloat(form.fahrradPreis)||0)+(form.zubehoer||[]).reduce((s,z)=>s+(parseFloat(z.preis)||0),0);
+
+  async function speichern(){
+    if(!form.kundeName){showToast("Bitte Kunden-Name eingeben.","err");return;}
+    if(!form.marke&&!form.modell){showToast("Bitte Fahrrad (Marke/Modell) angeben.","err");return;}
+    setSaving(true);
+    try{ await onSave({...form,zubehoer:form.zubehoer.filter(z=>z.name&&z.name.trim())}); }
+    catch(err){ showToast("Fehler: "+(err.message||"Speichern fehlgeschlagen"),"err"); setSaving(false); }
+  }
+
+  return(
+    <div style={{maxWidth:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h2 style={{fontSize:20,fontWeight:700}}>💰 Neuer Verkauf</h2>
+        <button onClick={onAbbruch} style={btnSecondary}>✕</button>
+      </div>
+
+      {/* KÄUFER */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>👤 KÄUFER</div>
+        <div style={{position:"relative",marginBottom:10}}>
+          <input placeholder="Bestandskunde suchen (optional)…" value={kundeSuche} onChange={e=>setKundeSuche(e.target.value)} style={inputStyle}/>
+          {kundenGefiltert.length>0&&(
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,marginTop:4,zIndex:10,boxShadow:"0 4px 16px #0002",maxHeight:200,overflowY:"auto"}}>
+              {kundenGefiltert.map(k=>(
+                <div key={k.id} onClick={()=>{
+                  setForm(p=>({...p,kundeName:`${k.vorname} ${k.nachname}`,telefon:k.telefon||"",email:k.email||"",adresse:`${k.strasse||""} ${k.hausnummer||""}, ${k.plz||""} ${k.ort||""}`.trim()}));
+                  setKundeSuche("");
+                }} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}
+                onMouseEnter={e=>e.currentTarget.style.background=COLORS.card}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <strong>{k.nachname}, {k.vorname}</strong> {k.telefon&&<span style={{color:COLORS.muted}}>· {k.telefon}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+          <input placeholder="Name des Käufers *" value={form.kundeName} onChange={e=>F("kundeName",e.target.value)} style={inputStyle}/>
+          <input placeholder="Telefon" type="tel" value={form.telefon} onChange={e=>F("telefon",e.target.value)} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+          <input placeholder="E-Mail" type="email" value={form.email} onChange={e=>F("email",e.target.value)} style={inputStyle}/>
+          <input placeholder="Adresse" value={form.adresse} onChange={e=>F("adresse",e.target.value)} style={inputStyle}/>
+        </div>
+      </div>
+
+      {/* FAHRRAD */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD</div>
+        {verfuegbarEnvanter.length>0&&(
+          <div style={{marginBottom:10}}>
+            <select value={form.envanterId||""} onChange={e=>ausEnvanter(e.target.value)} style={{...inputStyle,fontSize:13}}>
+              <option value="">— Aus Lager wählen oder manuell eingeben —</option>
+              {verfuegbarEnvanter.map(e=>(
+                <option key={e.id} value={e.id}>🏪 {e.marke} {e.modell}{e.rahmengroesse?" ("+e.rahmengroesse+")":""}{e.preis?" · "+formatEuro(e.preis):""}</option>
+              ))}
+            </select>
+            {form.envanterId&&<div style={{fontSize:11,color:COLORS.green,marginTop:4}}>✓ Aus Lager — wird nach Verkauf als "Satıldı" markiert</div>}
+          </div>
+        )}
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
+          <input placeholder="Marke *" value={form.marke} onChange={e=>F("marke",e.target.value)} style={inputStyle}/>
+          <input placeholder="Modell" value={form.modell} onChange={e=>F("modell",e.target.value)} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr 1fr",gap:10,marginBottom:10}}>
+          <select value={form.typ} onChange={e=>F("typ",e.target.value)} style={inputStyle}>
+            <option value="">Typ…</option>
+            {["Herrenrad","Damenrad","Kinderrad","E-Bike","Lastenrad","Mountainbike","Rennrad","Trekkingrad"].map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+          <input placeholder="Größe" value={form.rahmengroesse} onChange={e=>F("rahmengroesse",e.target.value)} style={inputStyle}/>
+          <input placeholder="Farbe" value={form.farbe} onChange={e=>F("farbe",e.target.value)} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr 1fr",gap:10}}>
+          <input placeholder="Rahmennummer" value={form.rahmennummer} onChange={e=>F("rahmennummer",e.target.value)} style={inputStyle}/>
+          <div><label style={labelStyle}>Fahrrad-Preis (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.fahrradPreis} onChange={e=>F("fahrradPreis",e.target.value)} style={{...inputStyle,fontWeight:700}}/></div>
+        </div>
+      </div>
+
+      {/* ZUBEHÖR */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🔧 ZUBEHÖR / EXTRAS</div>
+        {/* Hazır liste — işaretle */}
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:6,marginBottom:12}}>
+          {ZUBEHOER_VORLAGE.map(v=>{
+            const sel=form.zubehoer.find(z=>z.name===v.name);
+            return(
+              <label key={v.name} onClick={()=>zubToggle(v)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:8,cursor:"pointer",fontSize:13,
+                  border:`1px solid ${sel?COLORS.accent:COLORS.border}`,background:sel?COLORS.accent+"12":"transparent"}}>
+                <span style={{width:16,height:16,borderRadius:4,border:`2px solid ${sel?COLORS.accent:COLORS.border}`,background:sel?COLORS.accent:"transparent",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,flexShrink:0}}>{sel?"✓":""}</span>
+                <span style={{flex:1}}>{v.name}</span>
+                <span style={{color:COLORS.muted,fontSize:12}}>{formatEuro(v.preis)}</span>
+              </label>
+            );
+          })}
+        </div>
+        {/* Seçilenlerin fiyat düzenlemesi + manuel */}
+        {form.zubehoer.length>0&&(
+          <div style={{borderTop:`1px solid ${COLORS.border}`,paddingTop:12,marginBottom:10}}>
+            <div style={{fontSize:11,color:COLORS.muted,marginBottom:8}}>Ausgewählt — Preise anpassbar:</div>
+            {form.zubehoer.map((z,idx)=>(
+              <div key={idx} style={{display:"flex",gap:8,marginBottom:6,alignItems:"center"}}>
+                <input placeholder="Teil-Name" value={z.name} onChange={e=>zubName(idx,e.target.value)} style={{...inputStyle,flex:2,fontSize:13}}/>
+                <input type="number" step="0.01" placeholder="€" value={z.preis} onChange={e=>zubPreis(idx,e.target.value)} style={{...inputStyle,width:90,fontSize:13}}/>
+                <button onClick={()=>zubEntfernen(idx)} style={{background:"transparent",border:"none",color:COLORS.red,cursor:"pointer",fontSize:15,padding:"2px 6px",flexShrink:0}}>🗑️</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={zubManuell} style={{...btnSecondary,fontSize:12,padding:"6px 12px",color:COLORS.accent,borderColor:COLORS.accent}}>+ Anderes Teil</button>
+      </div>
+
+      {/* PREIS & ZAHLUNG */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>💶 PREIS & ZAHLUNG</div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:13,color:COLORS.muted,padding:"3px 0"}}><span>Zwischensumme:</span><span>{formatEuro(zwischensumme)}</span></div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"1fr 1fr",gap:10,margin:"10px 0"}}>
+          <div><label style={labelStyle}>Rabatt (€)</label><input type="number" step="0.01" placeholder="0.00" value={form.rabatt} onChange={e=>F("rabatt",e.target.value)} style={inputStyle}/></div>
+          <div><label style={labelStyle}>Zahlungsart</label>
+            <select value={form.zahlungsart} onChange={e=>F("zahlungsart",e.target.value)} style={inputStyle}>
+              {["Bar","EC-Karte","Kreditkarte","Überweisung","Finanzierung"].map(z=><option key={z} value={z}>{z}</option>)}
+            </select>
+          </div>
+        </div>
+        <div><label style={labelStyle}>Garantie (Monate)</label>
+          <select value={form.garantie} onChange={e=>F("garantie",e.target.value)} style={inputStyle}>
+            {["0","6","12","24","36"].map(g=><option key={g} value={g}>{g==="0"?"Keine":g+" Monate"}</option>)}
+          </select>
+        </div>
+        <div style={{marginTop:12,padding:"12px 16px",background:COLORS.accent+"12",borderRadius:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:18,color:COLORS.accent}}>
+          <span>Gesamtpreis:</span><span>{formatEuro(form.gesamtpreis||0)}</span>
+        </div>
+      </div>
+
+      <textarea placeholder="Anmerkungen…" value={form.notizen} onChange={e=>F("notizen",e.target.value)} rows={2} style={{...inputStyle,resize:"vertical",marginBottom:16}}/>
+
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={onAbbruch} style={{...btnSecondary,flex:1}}>Abbrechen</button>
+        <button disabled={saving} onClick={speichern} style={{...btnPrimary,flex:2,opacity:saving?.6:1}}>
+          {saving?"Wird gespeichert…":"✓ Verkauf abschließen"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
+  const printRef=useRef();
+  const vk=verkauf;
+  const zubehoer=vk.zubehoer||[];
+
+  function drucken(){
+    if(!printRef.current)return;
+    const win=window.open("","_blank");
+    if(!win)return;
+    const zubRows=zubehoer.map(z=>`<div class="row"><span>${z.name||"—"}</span><span>${formatEuro(z.preis||0)}</span></div>`).join("");
+    const rabatt=parseFloat(vk.rabatt)||0;
+    win.document.write(`<html><head><title>Kaufvertrag ${vk.nummer}</title>
+      <style>
+        body{font-family:sans-serif;color:#111;padding:${isMobile?16:36}px;line-height:1.5;font-size:13px;}
+        h1{color:#1a56a0;font-size:22px;margin-bottom:2px;}
+        .sub{color:#666;font-size:12px;margin-bottom:20px;}
+        .box{border:1px solid #ccc;border-radius:8px;padding:12px 16px;margin-bottom:12px;}
+        .label{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600;}
+        .row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;}
+        .row span:first-child{color:#555;}
+        .row span:last-child{font-weight:500;text-align:right;}
+        .total{background:#1a56a012;border-radius:8px;padding:10px 16px;display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#1a56a0;margin-top:4px;}
+        .agb{font-size:10px;color:#666;line-height:1.5;margin-top:8px;}
+        .sign{display:flex;justify-content:space-between;margin-top:40px;gap:40px;}
+        .sign div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:11px;color:#555;text-align:center;}
+      </style></head><body>
+      <h1>Kaufvertrag / Rechnung</h1>
+      <div class="sub">Nr. ${vk.nummer} · ${firma&&firma.name?firma.name:"Drahtesel Plus"} · Datum: ${vk.erstellt}</div>
+
+      <div class="box">
+        <div class="label">Käufer</div>
+        <div class="row"><span>Name:</span><span>${vk.kundeName||"—"}</span></div>
+        ${vk.telefon?`<div class="row"><span>Telefon:</span><span>${vk.telefon}</span></div>`:""}
+        ${vk.email?`<div class="row"><span>E-Mail:</span><span>${vk.email}</span></div>`:""}
+        ${vk.adresse?`<div class="row"><span>Adresse:</span><span>${vk.adresse}</span></div>`:""}
+      </div>
+
+      <div class="box">
+        <div class="label">Fahrrad</div>
+        <div class="row"><span>Marke/Modell:</span><span>${vk.marke||""} ${vk.modell||""}</span></div>
+        ${vk.typ?`<div class="row"><span>Typ:</span><span>${vk.typ}</span></div>`:""}
+        ${vk.rahmengroesse?`<div class="row"><span>Rahmengröße:</span><span>${vk.rahmengroesse}</span></div>`:""}
+        ${vk.farbe?`<div class="row"><span>Farbe:</span><span>${vk.farbe}</span></div>`:""}
+        ${vk.rahmennummer?`<div class="row"><span>Rahmennummer:</span><span>${vk.rahmennummer}</span></div>`:""}
+        <div class="row"><span>Fahrrad-Preis:</span><span>${formatEuro(vk.fahrradPreis||0)}</span></div>
+      </div>
+
+      ${zubehoer.length>0?`<div class="box"><div class="label">Zubehör</div>${zubRows}</div>`:""}
+
+      ${rabatt>0?`<div class="box"><div class="row"><span>Rabatt:</span><span>- ${formatEuro(rabatt)}</span></div></div>`:""}
+
+      <div class="total"><span>Gesamtpreis (inkl. MwSt.):</span><span>${formatEuro(vk.gesamtpreis||0)}</span></div>
+
+      <div class="box" style="margin-top:12px;">
+        <div class="row"><span>Zahlungsart:</span><span>${vk.zahlungsart||"—"}</span></div>
+        <div class="row"><span>Garantie:</span><span>${vk.garantie&&vk.garantie!=="0"?vk.garantie+" Monate":"Keine"}</span></div>
+      </div>
+
+      <div class="box">
+        <div class="label">Hinweise</div>
+        <div class="agb">
+          Der Käufer bestätigt den Erhalt des oben genannten Fahrrads in einwandfreiem Zustand.
+          Die gesetzliche Gewährleistung gilt gemäß den Angaben. Gebrauchträder werden unter
+          Ausschluss der Sachmängelhaftung verkauft, soweit gesetzlich zulässig.
+        </div>
+      </div>
+
+      <div class="sign">
+        <div>Ort, Datum</div>
+        <div>Unterschrift Käufer</div>
+        <div>Unterschrift Verkäufer</div>
+      </div>
+      </body></html>`);
+    win.document.close();
+    setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
+  }
+
+  return(
+    <div style={{maxWidth:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
+          <h2 style={{fontSize:20,fontWeight:700}}>Verkauf #{vk.nummer}</h2>
+        </div>
+        <button onClick={drucken} style={btnPrimary}>🖨️ Kaufvertrag drucken</button>
+      </div>
+
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <button onClick={()=>showConfirm("Verkauf wirklich löschen?",()=>onSil(vk.id),{icon:"🗑️",okLabel:"Löschen"})}
+          style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Löschen</button>
+      </div>
+
+      <div ref={printRef} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px"}}>
+        <VDetailRow label="Käufer" wert={vk.kundeName}/>
+        {vk.telefon&&<VDetailRow label="Telefon" wert={vk.telefon}/>}
+        {vk.email&&<VDetailRow label="E-Mail" wert={vk.email}/>}
+        {vk.adresse&&<VDetailRow label="Adresse" wert={vk.adresse}/>}
+        <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
+        <VDetailRow label="Fahrrad" wert={`${vk.marke||""} ${vk.modell||""}`}/>
+        {vk.typ&&<VDetailRow label="Typ" wert={vk.typ}/>}
+        {vk.rahmengroesse&&<VDetailRow label="Größe" wert={vk.rahmengroesse}/>}
+        {vk.farbe&&<VDetailRow label="Farbe" wert={vk.farbe}/>}
+        {vk.rahmennummer&&<VDetailRow label="Rahmennummer" wert={vk.rahmennummer}/>}
+        <VDetailRow label="Fahrrad-Preis" wert={formatEuro(vk.fahrradPreis||0)}/>
+        {zubehoer.length>0&&(
+          <>
+            <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
+            <div style={{fontSize:12,fontWeight:700,color:COLORS.muted,marginBottom:8}}>🔧 ZUBEHÖR</div>
+            {zubehoer.map((z,i)=>(
+              <VDetailRow key={i} label={z.name} wert={formatEuro(z.preis||0)}/>
+            ))}
+          </>
+        )}
+        {parseFloat(vk.rabatt)>0&&<VDetailRow label="Rabatt" wert={"- "+formatEuro(vk.rabatt)}/>}
+        <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
+        <VDetailRow label="Zahlungsart" wert={vk.zahlungsart}/>
+        <VDetailRow label="Garantie" wert={vk.garantie&&vk.garantie!=="0"?vk.garantie+" Monate":"Keine"}/>
+        {vk.notizen&&<VDetailRow label="Anmerkungen" wert={vk.notizen}/>}
+        <div style={{marginTop:12,padding:"12px 16px",background:COLORS.accent+"12",borderRadius:8,display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:18,color:COLORS.accent}}>
+          <span>Gesamtpreis:</span><span>{formatEuro(vk.gesamtpreis||0)}</span>
+        </div>
       </div>
     </div>
   );
