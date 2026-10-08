@@ -896,6 +896,14 @@ export default function DrahteselApp() {
     setVerkaeufe(p=>p.map(x=>x.id===id?vk:x));
   }
   async function verkaufLoeschen(id) {
+    // Satış envanterden geldiyse bisikleti tekrar "Im Laden" yap
+    const vk=verkaeufe.find(x=>x.id===id);
+    if(vk&&vk.envanterId){
+      try{
+        const item=envanter.find(e=>e.id===vk.envanterId);
+        if(item&&item.durum==="Satıldı")await envanterAktualisieren({...item,durum:"Im Laden"});
+      }catch{}
+    }
     await dbDelete("verkaeufe",id);
     setVerkaeufe(p=>p.filter(x=>x.id!==id));
   }
@@ -1045,7 +1053,7 @@ export default function DrahteselApp() {
             ))}
           </div>
         )}
-        {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} vermietungen={vermietungen} benutzer={benutzer} setScreen={setScreen}/>}
+        {screen==="dashboard"&&<Dashboard kunden={kunden} auftraege={auftraege} rechnungen={rechnungen} envanter={envanter} vermietungen={vermietungen} verkaeufe={verkaeufe} benutzer={benutzer} setScreen={setScreen}/>}
         {screen==="auftraege"&&<AlleAuftraege auftraege={auftraege} kunden={kunden}
           onDetail={(a)=>{setSelAuftrag(a);const k=kunden.find(k=>k.id===a.kundeId);setSelKunde(k||{id:a.kundeId,vorname:a.kundeVorname,nachname:a.kundeNachname,kdNr:a.kundeKdNr});setSelBisiklet(null);setPrevScreen("auftraege");setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${a.nummer}`}]);setScreen("auftrag-detail");}}
           onKundeDetail={(k)=>{if(k){setSelKunde(k);setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"kunde-detail",label:`${k.nachname}, ${k.vorname}`}]);setScreen("kunde-detail");}}}/>}
@@ -1213,7 +1221,7 @@ export default function DrahteselApp() {
           onGuncelle={async(vk)=>{try{await verkaufAktualisieren(vk);showToast("Gespeichert!");}catch(err){showToast("Hata: "+err.message,"err");}}}
           onSil={async(id)=>{try{await verkaufLoeschen(id);showToast("Gelöscht.");}catch(err){showToast("Hata","err");}}}
         />}
-        {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden} vermietungen={vermietungen}/>}
+        {screen==="raporlama"&&<RaporlamaScreen auftraege={auftraege} rechnungen={rechnungen} kunden={kunden} vermietungen={vermietungen} verkaeufe={verkaeufe}/>}
         {screen==="neu-auftrag-quick"&&<QuickAuftragScreen
           kunden={kunden}
           bisikletler={bisikletler}
@@ -1390,7 +1398,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose,
     </aside>
   );
 }
-function Dashboard({kunden,auftraege,rechnungen,envanter,vermietungen,benutzer,setScreen}){
+function Dashboard({kunden,auftraege,rechnungen,envanter,vermietungen,verkaeufe,benutzer,setScreen}){
   const gesamt=useMemo(()=>rechnungen.reduce((s,r)=>s+(r.brutto||0),0),[rechnungen]);
   const offene=useMemo(()=>auftraege.filter(a=>["Neu","In Arbeit"].includes(a.status)),[auftraege]);
   const fertige=useMemo(()=>auftraege.filter(a=>a.status==="Fertig"),[auftraege]);
@@ -1399,6 +1407,12 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,vermietungen,benutzer,s
   const aktiveVermietung=useMemo(()=>(vermietungen||[]).filter(v=>v.status==="Aktiv"),[vermietungen]);
   const ueberfaellig=useMemo(()=>(vermietungen||[]).filter(v=>v.status==="Aktiv"&&v.bisDatum&&tageSeit(v.bisDatum)>0),[vermietungen]);
   const heuteFaellig=useMemo(()=>(vermietungen||[]).filter(v=>v.status==="Aktiv"&&v.bisDatum&&tageSeit(v.bisDatum)===0),[vermietungen]);
+  // Satış istatistiği — bu ay
+  const verkaufDiesenMonat=useMemo(()=>{
+    const m=heute().slice(3,10); // "MM.YYYY"
+    return (verkaeufe||[]).filter(vk=>vk.erstellt&&vk.erstellt.slice(3,10)===m);
+  },[verkaeufe]);
+  const verkaufUmsatzMonat=verkaufDiesenMonat.reduce((s,vk)=>s+(+vk.gesamtpreis||0),0);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:12}}>
@@ -1419,6 +1433,7 @@ function Dashboard({kunden,auftraege,rechnungen,envanter,vermietungen,benutzer,s
           {label:"Umsatz gesamt",wert:formatEuro(gesamt),icon:"💶",farbe:COLORS.accent},
           {label:"Satılık Bisiklet",wert:(envanter||[]).filter(e=>["Im Laden","Im Lager","Satışa hazır"].includes(e.durum)).length,icon:"🏪",farbe:COLORS.teal,click:()=>setScreen("envanter")},
           {label:"Aktive Vermietungen",wert:aktiveVermietung.length,icon:"🔑",farbe:COLORS.purple,click:()=>setScreen("vermietung")},
+          {label:"Verkäufe (Monat)",wert:verkaufDiesenMonat.length,icon:"💰",farbe:COLORS.teal,click:()=>setScreen("verkauf")},
           {label:"Abgeholt (heute)",wert:auftraege.filter(a=>a.status==="Abgeholt"&&a.erstellt===heute()).length,icon:"📦",farbe:"#6b7280"},
         ].map(s=>(
           <div key={s.label} onClick={s.click} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",cursor:s.click?"pointer":"default"}}>
@@ -2708,7 +2723,7 @@ function erstelltZuDate(erstellt){
   try{const[d,m,y]=erstellt.split(".");return new Date(`${y}-${m}-${d}`);}catch{return new Date(0);}
 }
 
-function RaporlamaScreen({auftraege,rechnungen,kunden,vermietungen}){
+function RaporlamaScreen({auftraege,rechnungen,kunden,vermietungen,verkaeufe}){
   const [zeitraum,setZeitraum]=useState("alle");
   const jetzt=new Date();
   const monatsName=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
@@ -2739,7 +2754,19 @@ function RaporlamaScreen({auftraege,rechnungen,kunden,vermietungen}){
     return vm.filter(v=>v.erstellt&&erstelltZuDate(v.erstellt)>=cutoff);
   },[vermietungen,zeitraum]);
   const vermietungUmsatz=useMemo(()=>gefVermietung.reduce((s,v)=>s+(+v.preis||0),0),[gefVermietung]);
-  const gesamtMitVermietung=gesamtUmsatz+vermietungUmsatz;
+
+  // Satış geliri (seçili dönemde)
+  const gefVerkauf=useMemo(()=>{
+    const vk=verkaeufe||[];
+    if(zeitraum==="alle")return vk;
+    const cutoff=new Date();
+    if(zeitraum==="30")cutoff.setDate(cutoff.getDate()-30);
+    else if(zeitraum==="90")cutoff.setDate(cutoff.getDate()-90);
+    else if(zeitraum==="365")cutoff.setDate(cutoff.getDate()-365);
+    return vk.filter(v=>v.erstellt&&erstelltZuDate(v.erstellt)>=cutoff);
+  },[verkaeufe,zeitraum]);
+  const verkaufUmsatz=useMemo(()=>gefVerkauf.reduce((s,v)=>s+(+v.gesamtpreis||0),0),[gefVerkauf]);
+  const gesamtMitVermietung=gesamtUmsatz+vermietungUmsatz+verkaufUmsatz;
 
   // Monatlicher Umsatz (son 6 ay)
   const monatDaten=[];
@@ -2748,9 +2775,11 @@ function RaporlamaScreen({auftraege,rechnungen,kunden,vermietungen}){
     const mStr=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
     const mR=rechnungen.filter(r=>erstelltZuMonat(r.erstellt)===mStr);
     const mV=(vermietungen||[]).filter(v=>erstelltZuMonat(v.erstellt)===mStr);
+    const mVk=(verkaeufe||[]).filter(v=>erstelltZuMonat(v.erstellt)===mStr);
     const rUmsatz=mR.reduce((s,r)=>s+(+r.brutto||0),0);
     const vUmsatz=mV.reduce((s,v)=>s+(+v.preis||0),0);
-    monatDaten.push({label:`${monatsName[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,umsatz:rUmsatz+vUmsatz,anzahl:mR.length+mV.length});
+    const vkUmsatz=mVk.reduce((s,v)=>s+(+v.gesamtpreis||0),0);
+    monatDaten.push({label:`${monatsName[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,umsatz:rUmsatz+vUmsatz+vkUmsatz,anzahl:mR.length+mV.length+mVk.length});
   }
   const maxUmsatz=Math.max(...monatDaten.map(m=>m.umsatz),1);
 
@@ -2789,7 +2818,8 @@ function RaporlamaScreen({auftraege,rechnungen,kunden,vermietungen}){
           {label:"Rechnungen",wert:gefRechnung.length,icon:"🧾",farbe:COLORS.blue},
           {label:"Ø Rechnungswert",wert:formatEuro(avgRechnung),icon:"📊",farbe:COLORS.purple},
           {label:"Vermietungs-Umsatz",wert:formatEuro(vermietungUmsatz),icon:"🔑",farbe:COLORS.orange},
-          {label:"Gesamt + Vermietung",wert:formatEuro(gesamtMitVermietung),icon:"💰",farbe:COLORS.green},
+          {label:"Verkauf-Umsatz",wert:formatEuro(verkaufUmsatz),icon:"💰",farbe:COLORS.teal},
+          {label:"Gesamtumsatz (alle)",wert:formatEuro(gesamtMitVermietung),icon:"🏆",farbe:COLORS.green},
           {label:"Kunden gesamt",wert:kunden.length,icon:"👥",farbe:COLORS.teal},
         ].map(s=>(
           <div key={s.label} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px"}}>
