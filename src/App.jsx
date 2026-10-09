@@ -1489,7 +1489,7 @@ function Sidebar({screen,setScreen,benutzer,onLogout,auftraege,isMobile,onClose,
     {id:"dashboard",label:"Dashboard",icon:"⊞"},
     {id:"auftraege",label:"Arbeitsaufträge",icon:"🔧",badge:offene||null},
     {id:"kunden",label:"Kunden & Fahrräder",icon:"👥"},
-    {id:"rechnungen",label:"Bescheinigungen",icon:"🧾"},
+    {id:"rechnungen",label:"Rechnungen",icon:"🧾"},
     {id:"raporlama",label:"Raporlama",icon:"📊"},
     {id:"envanter",label:"Fahrrad-Lager",icon:"🏪"},
     {id:"verkauf",label:"Verkauf",icon:"💰"},
@@ -3150,18 +3150,27 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
 }
 
 function AlleRechnungen({rechnungen,kunden,onDetail}){
+  const [suche,setSuche]=useState("");
+  const liste=[...rechnungen]
+    .filter(r=>{
+      if(!suche)return true;
+      const k=kunden.find(x=>x.id===r.kundeId)||{};
+      return `${r.nummer||""} ${k.nachname||""} ${k.vorname||""} ${k.kdNr||""} ${r.fahrradModell||""}`.toLowerCase().includes(suche.toLowerCase());
+    })
+    .sort((a,b)=>{
+      // Önce Kunden Nr. ile uyumlu (büyükten küçüğe)
+      const kA=kunden.find(x=>x.id===a.kundeId)||{};
+      const kB=kunden.find(x=>x.id===b.kundeId)||{};
+      const kdComp=(parseInt(kB.kdNr)||0)-(parseInt(kA.kdNr)||0);
+      if(kdComp!==0) return kdComp;
+      // Aynı müşteride Rechnung Nr. büyükten küçüğe
+      return (parseInt(b.nummer)||0)-(parseInt(a.nummer)||0);
+    });
   return(<div>
-    <h2 style={{marginBottom:20}}>Alle Rechnungen</h2>
+    <h2 style={{marginBottom:16}}>Alle Rechnungen</h2>
+    <input placeholder="🔍 Suchen (Nr., Kunde, Kd.-Nr., Fahrrad)…" value={suche} onChange={e=>setSuche(e.target.value)} style={{...inputStyle,marginBottom:16}}/>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {[...rechnungen].sort((a,b)=>{
-        // Önce Kunden Nr. ile uyumlu (büyükten küçüğe)
-        const kA=kunden.find(x=>x.id===a.kundeId)||{};
-        const kB=kunden.find(x=>x.id===b.kundeId)||{};
-        const kdComp=(parseInt(kB.kdNr)||0)-(parseInt(kA.kdNr)||0);
-        if(kdComp!==0) return kdComp;
-        // Aynı müşteride Rechnung Nr. büyükten küçüğe
-        return (parseInt(b.nummer)||0)-(parseInt(a.nummer)||0);
-      }).map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
+      {liste.map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
         <div key={r.id} onClick={()=>onDetail(r,k)} style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"12px 18px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}
           onMouseEnter={e=>e.currentTarget.style.borderColor=COLORS.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=COLORS.border}>
           <div style={{display:"flex",gap:12,alignItems:"center",flex:1,minWidth:0}}>
@@ -3175,7 +3184,7 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
           </div>
         </div>
       );})}
-      {!rechnungen.length&&<div style={{color:COLORS.muted,textAlign:"center",padding:40}}>Noch keine Rechnungen.</div>}
+      {!liste.length&&<div style={{color:COLORS.muted,textAlign:"center",padding:40}}>{suche?"Kein Treffer.":"Noch keine Rechnungen."}</div>}
     </div>
   </div>);
 }
