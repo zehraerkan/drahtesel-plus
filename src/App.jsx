@@ -4891,7 +4891,7 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
 
   // Envanterden seç
   const verfuegbarEnvanter=(envanter||[]).filter(e=>["Im Laden","Im Lager","Satışa hazır"].includes(e.durum));
-  const lagerGefiltert=verfuegbarEnvanter.filter(e=>!lagerSuche||`${e.marke||""} ${e.modell||""} ${e.typ||""} ${e.rahmengroesse||""} ${e.farbe||""} ${e.rahmennummer||""}`.toLowerCase().includes(lagerSuche.toLowerCase()));
+  const lagerGefiltert=verfuegbarEnvanter.filter(e=>!lagerSuche||`${e.marke||""} ${e.modell||""} ${e.typ||""} ${e.rahmenGroesse||e.rahmengroesse||""} ${e.farbe||""} ${e.rahmennummer||""}`.toLowerCase().includes(lagerSuche.toLowerCase()));
   function ausEnvanter(eId){
     if(!eId){setForm(p=>recalc({...p,envanterId:"",marke:"",modell:"",typ:"",rahmennummer:"",rahmengroesse:"",farbe:"",fahrradPreis:""}));return;}
     const e=verfuegbarEnvanter.find(x=>x.id===eId);
@@ -4899,7 +4899,7 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
     setForm(p=>recalc({...p,
       envanterId:e.id,
       marke:e.marke||"", modell:e.modell||"", typ:e.typ||"",
-      rahmennummer:e.rahmennummer||"", rahmengroesse:e.rahmengroesse||"", farbe:e.farbe||"",
+      rahmennummer:e.rahmennummer||"", rahmengroesse:e.rahmenGroesse||e.rahmengroesse||"", farbe:e.farbe||"",
       fahrradPreis:e.preis||p.fahrradPreis,
     }));
   }
@@ -5000,7 +5000,7 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
                         </div>
                         <div style={{fontSize:11,color:COLORS.muted,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
                           {e.typ&&<span>{e.typ}</span>}
-                          {e.rahmengroesse&&<span>📏 {e.rahmengroesse}</span>}
+                          {(e.rahmenGroesse||e.rahmengroesse)&&<span>📏 {e.rahmenGroesse||e.rahmengroesse}</span>}
                           {e.farbe&&<span>🎨 {e.farbe}</span>}
                           {e.rahmennummer&&<span>🔖 {e.rahmennummer}</span>}
                           {e.durum&&<span style={{color:COLORS.green}}>• {e.durum}</span>}
