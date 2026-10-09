@@ -429,7 +429,7 @@ function getFirma(){
     telefon:"030 / 246 37 912",mobil:"0176 / 234 88 885",email:"drahteselplus@google.com",
     web:"www.drahteselplus.de",steuerNr:"30/333/50218",ustId:"DE459175991",
     iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
-    geschaeftsfuehrer:"Ömer COLAK",absenderEmail:""
+    geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false
   };}catch{return {};}
 }
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
@@ -500,8 +500,133 @@ function formatTelefon(raw){
   if(s.startsWith("+")) return "+"+digits;
   return s;
 }
-function calcNetto(b){return b/1.19;}
-function calcMwst(b){return b-calcNetto(b);}
+function calcNetto(b,rate){const r=(rate==null?19:+rate)||0;return b/(1+r/100);}
+function calcMwst(b,rate){return b-calcNetto(b,rate);}
+// Geçerli MwSt oranını firma ayarından okur. Kleinunternehmer (§19) ise 0 döner.
+function firmaMwstSatz(){try{const f=getFirma();if(f.kleinunternehmer)return 0;const r=parseFloat(f.mwstSatz);return isNaN(r)?19:r;}catch{return 19;}}
+
+// Serbest metin adresi (ör. "Ackerstraße 13, 10115 Berlin") strasse/plz/ort olarak ayrıştırır (en iyi tahmin).
+function parseAdresseDE(adr){
+  adr=(adr||"").trim();
+  let strasse=adr,plz="",ort="";
+  if(!adr)return{strasse,plz,ort};
+  const m=adr.match(/(\d{5})\s+([^\d,]+)\s*$/); // "... 10115 Berlin"
+  if(m){plz=m[1];ort=m[2].trim();strasse=adr.slice(0,m.index).replace(/[,\s]+$/,"").trim();}
+  else{
+    const parts=adr.split(",");
+    if(parts.length>=2){strasse=parts[0].trim();const rest=parts.slice(1).join(",").trim();const pm=rest.match(/(\d{5})\s*(.*)/);if(pm){plz=pm[1];ort=(pm[2]||"").trim();}else ort=rest;}
+  }
+  return{strasse,plz,ort};
+}
+
+// §14 UStG uyumlu Rechnung HTML'i üretir. Hem satış (Verkauf) hem servis faturaları bunu kullanır.
+// o: {nummer, kundeNr?, datum, empfName, empfLines[], empfTel?, empfEmail?, betreff?,
+//     items:[{bez,ep,menge}], gesamt, zahlung, garantie?, garantieLabel?, isMobile?}
+function rechnungDruckHTML(o){
+  const f=getFirma();
+  const gesamt=parseFloat(o.gesamt)||0;
+  const klein=!!f.kleinunternehmer;
+  const satz=firmaMwstSatz();
+  const netto=klein?gesamt:calcNetto(gesamt,satz);
+  const mwst=gesamt-netto;
+  const datum=o.datum||heute();
+  const zahlung=o.zahlung||"Bar";
+  const vadeli=/rechnung|überweisung|ueberweisung/i.test(zahlung);
+  const plusTage=(dstr,n)=>{const m=/(\d{2})\.(\d{2})\.(\d{4})/.exec(dstr||"");if(!m)return dstr;const d=new Date(+m[3],+m[2]-1,+m[1]+n);return `${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;};
+  const faellig=plusTage(datum,14);
+  const items=o.items||[];
+  const rows=items.map((it,i)=>{const m=(it.menge==null?1:it.menge);return `<tr><td class="c">${i+1}</td><td>${it.bez||""}</td><td class="r">${formatEuro(it.ep||0)}</td><td class="r">${m} Stück</td><td class="r">${formatEuro((it.ep||0)*m)}</td></tr>`;}).join("");
+  const empfLines=(o.empfLines||[]).filter(Boolean);
+  const garantieLabel=o.garantieLabel||"ab Kaufdatum";
+  return `<html><head><meta charset="utf-8"><title>Rechnung ${o.nummer||""}</title>
+      <style>
+        *{box-sizing:border-box;}
+        body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:${o.isMobile?20:48}px;font-size:12px;line-height:1.5;}
+        .head{display:flex;justify-content:space-between;gap:30px;margin-bottom:26px;}
+        .tagline{font-weight:700;font-size:13px;}
+        .tagline .it{font-weight:400;font-style:italic;color:#555;font-size:11px;}
+        .empf{margin-top:18px;}
+        .empf div{font-size:12px;}
+        .empf .nm{font-weight:600;}
+        .firma{text-align:right;font-size:11px;color:#333;line-height:1.55;white-space:nowrap;}
+        .firma .fn{font-weight:700;font-size:13px;color:#111;}
+        h1{font-size:24px;margin:4px 0 12px;font-weight:700;}
+        .meta{display:flex;gap:26px;flex-wrap:wrap;font-size:12px;margin-bottom:4px;color:#222;}
+        .meta b{font-weight:600;}
+        .betreff{font-weight:700;font-size:13px;margin:16px 0 8px;}
+        table{width:100%;border-collapse:collapse;margin-bottom:14px;}
+        th{text-align:left;padding:7px 8px;border-bottom:2px solid #111;font-size:11px;background:#f5f5f5;}
+        td{padding:7px 8px;border-bottom:1px solid #e5e5e5;font-size:12px;}
+        th.r,td.r{text-align:right;}th.c,td.c{text-align:center;width:38px;}
+        .sum{width:290px;margin-left:auto;margin-bottom:18px;}
+        .sum .ln{display:flex;justify-content:space-between;padding:4px 2px;font-size:12px;}
+        .sum .ges{border-top:2px solid #111;margin-top:4px;padding-top:7px;font-weight:700;font-size:14px;}
+        .zahl{font-size:12px;margin:3px 0;}
+        .foot{margin-top:44px;border-top:1px solid #ccc;padding-top:10px;}
+        .seite{font-size:10px;color:#888;margin-bottom:10px;}
+        .footcols{display:flex;justify-content:space-between;gap:24px;font-size:10px;color:#555;line-height:1.5;}
+        .footcols b{color:#222;}
+        @media print{body{padding:24px;}}
+      </style></head><body>
+      <div class="head">
+        <div>
+          <div class="tagline">${f.name||""}${f.zusatz?` - ${f.zusatz}`:""}</div>
+          <div class="tagline"><span class="it">Ihr Servicepartner für Fahrräder</span></div>
+          <div class="empf">
+            <div class="nm">${o.empfName||"—"}</div>
+            ${empfLines.map(l=>`<div>${l}</div>`).join("")}
+            ${o.empfTel?`<div>Tel: ${o.empfTel}</div>`:""}
+            ${o.empfEmail?`<div>${o.empfEmail}</div>`:""}
+          </div>
+        </div>
+        <div class="firma">
+          <div class="fn">${f.name||""}</div>
+          ${f.zusatz?`<div>${f.zusatz}</div>`:""}
+          <div>${f.strasse||""}</div>
+          <div>${f.plz||""} ${f.ort||""}</div>
+          ${f.telefon?`<div>Telefon: ${f.telefon}</div>`:""}
+          ${f.mobil?`<div>Whatsapp-Mobil: ${f.mobil}</div>`:""}
+          ${f.email?`<div>E-Mail: ${f.email}</div>`:""}
+          ${f.web?`<div>Web: ${f.web}</div>`:""}
+        </div>
+      </div>
+
+      <h1>Rechnung</h1>
+      <div class="meta"><span><b>Rechnung Nr.</b> ${o.nummer||""}</span>${o.kundeNr?`<span><b>Kunde Nr.</b> ${o.kundeNr}</span>`:""}<span><b>Datum:</b> ${datum}</span></div>
+
+      ${o.betreff?`<div class="betreff">${o.betreff}</div>`:""}
+
+      <table>
+        <thead><tr>
+          <th class="c">Pos</th><th>Beschreibung</th><th class="r">Einzelpreis</th><th class="r">Anzahl</th><th class="r">Gesamtpreis</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+
+      <div class="sum">
+        ${klein
+          ? `<div class="ln ges"><span>Gesamtbetrag:</span><span>${formatEuro(gesamt)}</span></div>`
+          : `<div class="ln"><span>Nettobetrag:</span><span>${formatEuro(netto)}</span></div>
+        <div class="ln"><span>zzgl. ${satz}% MwSt.:</span><span>${formatEuro(mwst)}</span></div>
+        <div class="ln ges"><span>Gesamtbetrag:</span><span>${formatEuro(gesamt)}</span></div>`}
+      </div>
+
+      ${klein?`<div class="zahl" style="margin-top:2px;">Gemäß § 19 UStG wird keine Umsatzsteuer berechnet und ausgewiesen.</div>`:""}
+      ${vadeli
+        ? `<div class="zahl">Bitte überweisen Sie den Gesamtbetrag von ${formatEuro(gesamt)} ohne Abzug bis zum ${faellig} auf das unten genannte Konto.</div>`
+        : `<div class="zahl">Der Gesamtbetrag wurde mit ${zahlung} bezahlt.</div>`}
+      <div class="zahl">Leistungs-/Lieferdatum ist der ${datum}.</div>
+      ${o.garantie&&o.garantie!=="0"?`<div class="zahl">Garantie: ${o.garantie} Monate ${garantieLabel}.</div>`:""}
+
+      <div class="foot">
+        <div class="seite">Seite 1 von 1</div>
+        <div class="footcols">
+          <div><b>${f.name||""}</b><br>${f.strasse||""}<br>${f.plz||""} ${f.ort||""}<br>USt-IdNr: ${f.ustId||""}<br>Steuernummer: ${f.steuerNr||""}<br>Geschäftsführer: ${f.geschaeftsfuehrer||""}</div>
+          <div style="text-align:right"><b>${f.name||""}</b><br>${f.bank||""}<br>IBAN: ${f.iban||""}<br>BIC: ${f.bic||""}</div>
+        </div>
+      </div>
+      </body></html>`;
+}
 
 // DB row → app object dönüşümleri
 function rowToKunde(r){return{...r.data,id:r.id,erstellt:r.erstellt};}
@@ -874,8 +999,26 @@ export default function DrahteselApp() {
       nummer=String(maxNr+1).padStart(4,"0");
     }
     const status="Abgeschlossen";
-    const neu={...vk,id,nummer,erstellt,status};
-    const dataObj={...vk,nummer,status};
+    // ── Stammkunde kontrolü: müşteri kayıtlı değilse hemen Stammkunde olarak ekle ──
+    let kundeId=vk.kundeId||null, kundeKdNr=vk.kundeKdNr||null;
+    if(!kundeKdNr){
+      const nameKey=(vk.kundeName||"").trim().toLowerCase();
+      const telKey=(vk.telefon||"").replace(/\D/g,"");
+      const match=kunden.find(k=>`${k.vorname||""} ${k.nachname||""}`.trim().toLowerCase()===nameKey&&(telKey?(k.telefon||"").replace(/\D/g,"")===telKey:true));
+      if(match){kundeId=match.id;kundeKdNr=match.kdNr;}
+      else if(nameKey){
+        try{
+          let strasse=vk.strasse||"",hausnummer=vk.hausnummer||"",plz=vk.plz||"",ort=vk.ort||"";
+          if(!strasse&&!plz&&!ort){const pa=parseAdresseDE(vk.adresse);strasse=pa.strasse;plz=pa.plz;ort=pa.ort;}
+          let vorname=vk.vorname||"",nachname=vk.nachname||"";
+          if(!vorname&&!nachname){const parts=(vk.kundeName||"").trim().split(/\s+/);nachname=parts.length>1?parts[parts.length-1]:(parts[0]||"");vorname=parts.length>1?parts.slice(0,-1).join(" "):"";}
+          const neuerK=await kundeHinzufuegen({vorname,nachname,telefon:vk.telefon||"",whatsapp:vk.telefon||"",email:vk.email||"",strasse,hausnummer,plz,ort,land:vk.land||"Deutschland",notiz:"Automatisch aus Verkauf angelegt",quelle:"Verkauf"});
+          kundeId=neuerK.id;kundeKdNr=neuerK.kdNr;
+        }catch(e){/* müşteri eklenemezse satış yine de kaydedilir */}
+      }
+    }
+    const neu={...vk,id,nummer,erstellt,status,kundeId,kundeKdNr};
+    const dataObj={...vk,nummer,status,kundeId,kundeKdNr};
     try{ await dbInsert("verkaeufe",{id,status,erstellt,data:dataObj}); }
     catch(err){ await dbInsert("verkaeufe",{id,erstellt,data:dataObj}); }
     setVerkaeufe(p=>[neu,...p]);
@@ -2902,18 +3045,22 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
   function drucken(){
     const win=window.open("","_blank");
-    if(!printRef.current)return;
-    win.document.write(`<html><head><title>Rechnung ${rechnung.nummer}</title>
-    <style>body{font-family:sans-serif;margin:0;padding:40px;color:#111;font-size:13px;}
-    table{width:100%;border-collapse:collapse;}th{text-align:left;padding:6px 8px;background:#f0f0f0;font-size:11px;}
-    td{padding:6px 8px;border-bottom:1px solid #eee;}</style></head>
-    <body>${printRef.current.innerHTML}</body></html>`);
-    win.document.close();setTimeout(()=>win.print(),600);
+    if(!win)return;
+    const items=(rechnung.positionen||[]).map(p=>({bez:p.beschreibung,ep:parseFloat(p.einzelpreis)||0,menge:(p.menge==null?1:p.menge)}));
+    const empfLines=[`${k.strasse||""} ${k.hausnr||""}`.trim(),`${k.plz||""} ${k.ort||""}`.trim(),k.land||"Deutschland"];
+    win.document.write(rechnungDruckHTML({
+      nummer:rechnung.nummer, kundeNr:rechnung.kundeKdNr||k.kdNr, datum:rechnung.erstellt,
+      empfName:`${k.vorname||""} ${k.nachname||""}`.trim(), empfLines,
+      empfTel:k.telefon, empfEmail:k.email,
+      betreff:rechnung.fahrradModell, items, gesamt:rechnung.brutto, zahlung:rechnung.bezahlung
+    }));
+    win.document.close();
+    setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
   return(
     <div style={{maxWidth:"100%"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-        <h2>Auftragbescheinigung Nr. {rechnung.nummer}</h2>
+        <h2>Rechnung Nr. {rechnung.nummer}</h2>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnPrimary}>🖨️ Drucken / PDF</button>
           {k.email&&<a href={`mailto:${k.email}?subject=Rechnung%20Nr.%20${rechnung.nummer}%20-%20Drahtesel%20Plus`} style={{...btnSecondary,textDecoration:"none",fontSize:13}}>📧 E-Mail</a>}
@@ -2955,7 +3102,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
             </div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{fontSize:20,fontWeight:700,letterSpacing:.5}}>AUFTRAGBESCHEINIGUNG</div>
+            <div style={{fontSize:20,fontWeight:700,letterSpacing:.5}}>RECHNUNG</div>
             <div style={{fontSize:13,marginTop:6,color:"#444"}}>Nr. {rechnung.nummer} · Kd.-Nr. {rechnung.kundeKdNr||k.kdNr}</div>
             <div style={{fontSize:13,color:"#444"}}>Datum: {rechnung.erstellt}</div>
           </div>
@@ -2987,15 +3134,12 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
           ))}</tbody>
         </table></div>
         <div style={{maxWidth:280,marginLeft:"auto"}}>
-          {[{l:"Nettobetrag:",w:formatEuro(rechnung.netto||calcNetto(rechnung.brutto||0))},{l:"zzgl. 19% MwSt.:",w:formatEuro(rechnung.mwst||calcMwst(rechnung.brutto||0))}].map(z=>(
+          {!getFirma().kleinunternehmer&&[{l:"Nettobetrag:",w:formatEuro(calcNetto(rechnung.brutto||0,firmaMwstSatz()))},{l:`zzgl. ${firmaMwstSatz()}% MwSt.:`,w:formatEuro(calcMwst(rechnung.brutto||0,firmaMwstSatz()))}].map(z=>(
             <div key={z.l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:13,color:"#555"}}><span>{z.l}</span><span style={{fontFamily:"monospace"}}>{z.w}</span></div>
           ))}
           <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,fontSize:16,borderTop:"2px solid #111",paddingTop:8,marginTop:8}}><span>Gesamtbetrag:</span><span style={{fontFamily:"monospace"}}>{formatEuro(rechnung.brutto||0)}</span></div>
         </div>
-        <div style={{marginTop:20,fontSize:12,color:"#555"}}>Der Gesamtbetrag wurde mit <strong>{rechnung.bezahlung||"Bar"}</strong> bezahlt.<br/>Leistungsdatum ist der {rechnung.erstellt}.</div>
-        <div style={{marginTop:14,padding:"10px 14px",background:"#f8f9fa",borderRadius:6,border:"1px solid #e0e0e0",fontSize:11,color:"#777",fontStyle:"italic"}}>
-          <strong>Hinweis:</strong> Dieses Dokument wurde ausschließlich zu Informationszwecken erstellt und stellt keine steuerlich anerkannte Rechnung im Sinne des §14 UStG dar.
-        </div>
+        <div style={{marginTop:20,fontSize:12,color:"#555"}}>{getFirma().kleinunternehmer&&<>Gemäß § 19 UStG wird keine Umsatzsteuer berechnet und ausgewiesen.<br/></>}Der Gesamtbetrag wurde mit <strong>{rechnung.bezahlung||"Bar"}</strong> bezahlt.<br/>Leistungs-/Lieferdatum ist der {rechnung.erstellt}.</div>
         <div style={{marginTop:40,paddingTop:14,borderTop:"1px solid #ccc",fontSize:11,color:"#888",display:"flex",justifyContent:"space-between"}}>
           <div><strong>HAS 17 GmbH</strong> · Fehrbellinerstr. 17 · 10119 Berlin<br/>USt-IdNr: DE459175991 · Steuernummer: 30/333/50218<br/>Geschäftsführer: Ömer COLAK</div>
           <div style={{textAlign:"right"}}>Berliner Sparkasse<br/>IBAN: DE02 1005 0000 0191 565997<br/>BIC: BELADEBEXXX</div>
@@ -3007,7 +3151,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
 
 function AlleRechnungen({rechnungen,kunden,onDetail}){
   return(<div>
-    <h2 style={{marginBottom:20}}>Alle Auftragbescheinigungen</h2>
+    <h2 style={{marginBottom:20}}>Alle Rechnungen</h2>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {[...rechnungen].sort((a,b)=>{
         // Önce Kunden Nr. ile uyumlu (büyükten küçüğe)
@@ -3180,7 +3324,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
       email:"drahteselplus@google.com",web:"www.drahteselplus.de",
       steuerNr:"30/333/50218",ustId:"DE459175991",
       iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
-      geschaeftsfuehrer:"Ömer COLAK",absenderEmail:""
+      geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false
     };}catch{return {};}
   });
   const FF=(k,v)=>setFirma(p=>{const n={...p,[k]:v};try{localStorage.setItem("dp_firma",JSON.stringify(n));}catch{}return n;});
@@ -3269,10 +3413,29 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
         <div><label style={labelStyle}>Steuernummer</label><input value={firma.steuerNr||""} onChange={e=>FF("steuerNr",e.target.value)} style={inputStyle}/></div>
         <div><label style={labelStyle}>USt-IdNr</label><input value={firma.ustId||""} onChange={e=>FF("ustId",e.target.value)} style={inputStyle}/></div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
         <div><label style={labelStyle}>Bank</label><input value={firma.bank||""} onChange={e=>FF("bank",e.target.value)} style={inputStyle}/></div>
         <div><label style={labelStyle}>IBAN</label><input value={firma.iban||""} onChange={e=>FF("iban",e.target.value)} style={inputStyle}/></div>
         <div><label style={labelStyle}>BIC</label><input value={firma.bic||""} onChange={e=>FF("bic",e.target.value)} style={inputStyle}/></div>
+      </div>
+      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 16px",marginBottom:4}}>
+        <div style={{fontWeight:600,marginBottom:10,fontSize:13}}>🏛️ Umsatzsteuer (Rechnungen)</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:12,alignItems:"end"}}>
+          <div>
+            <label style={labelStyle}>MwSt-Satz (%)</label>
+            <input type="number" step="0.1" min="0" value={firma.kleinunternehmer?"0":(firma.mwstSatz??"19")}
+              disabled={!!firma.kleinunternehmer}
+              onChange={e=>FF("mwstSatz",e.target.value)}
+              style={{...inputStyle,opacity:firma.kleinunternehmer?.5:1}}/>
+          </div>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,paddingBottom:10}}>
+            <input type="checkbox" checked={!!firma.kleinunternehmer} onChange={e=>FF("kleinunternehmer",e.target.checked)} style={{width:18,height:18,cursor:"pointer"}}/>
+            <span>Kleinunternehmer nach §19 UStG <span style={{color:COLORS.muted}}>(keine MwSt ausweisen)</span></span>
+          </label>
+        </div>
+        <div style={{fontSize:11,color:COLORS.muted,marginTop:8,lineHeight:1.5}}>
+          Standart bisiklet/aksesuar satışında MwSt %19'dur. Kleinunternehmer işaretlenirse faturada MwSt gösterilmez ve §19 notu eklenir.
+        </div>
       </div>
       <button onClick={()=>showToast("Firma bilgileri kaydedildi! ✓")} style={{...btnPrimary,marginTop:16,width:"100%"}}>💾 Firma Bilgilerini Kaydet</button>
     </div>
@@ -4678,8 +4841,12 @@ function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm
 function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
   const [saving,setSaving]=useState(false);
   const [kundeSuche,setKundeSuche]=useState("");
+  const [lagerSuche,setLagerSuche]=useState("");
+  const [lagerOffen,setLagerOffen]=useState(false);
   const [form,setForm]=useState({
-    kundeName:"", telefon:"", adresse:"", email:"",
+    vorname:"", nachname:"", telefon:"", email:"",
+    strasse:"", hausnummer:"", plz:"", ort:"", land:"Deutschland",
+    kundeId:"", kundeKdNr:"",
     envanterId:"",
     marke:"", modell:"", typ:"", rahmennummer:"", rahmengroesse:"", farbe:"",
     fahrradPreis:"",
@@ -4724,8 +4891,9 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
 
   // Envanterden seç
   const verfuegbarEnvanter=(envanter||[]).filter(e=>["Im Laden","Im Lager","Satışa hazır"].includes(e.durum));
+  const lagerGefiltert=verfuegbarEnvanter.filter(e=>!lagerSuche||`${e.marke||""} ${e.modell||""} ${e.typ||""} ${e.rahmengroesse||""} ${e.farbe||""} ${e.rahmennummer||""}`.toLowerCase().includes(lagerSuche.toLowerCase()));
   function ausEnvanter(eId){
-    if(!eId){F("envanterId","");return;}
+    if(!eId){setForm(p=>recalc({...p,envanterId:"",marke:"",modell:"",typ:"",rahmennummer:"",rahmengroesse:"",farbe:"",fahrradPreis:""}));return;}
     const e=verfuegbarEnvanter.find(x=>x.id===eId);
     if(!e)return;
     setForm(p=>recalc({...p,
@@ -4743,10 +4911,12 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
   const zwischensumme=(parseFloat(form.fahrradPreis)||0)+(form.zubehoer||[]).reduce((s,z)=>s+(parseFloat(z.preis)||0),0);
 
   async function speichern(){
-    if(!form.kundeName){showToast("Bitte Kunden-Name eingeben.","err");return;}
+    if(!form.vorname&&!form.nachname){showToast("Bitte Vor- und Nachname eingeben.","err");return;}
     if(!form.marke&&!form.modell){showToast("Bitte Fahrrad (Marke/Modell) angeben.","err");return;}
     setSaving(true);
-    try{ await onSave({...form,zubehoer:form.zubehoer.filter(z=>z.name&&z.name.trim())}); }
+    const adresse=[`${form.strasse||""} ${form.hausnummer||""}`.trim(),`${form.plz||""} ${form.ort||""}`.trim()].filter(Boolean).join(", ");
+    const kundeName=`${form.vorname||""} ${form.nachname||""}`.trim();
+    try{ await onSave({...form,kundeName,adresse,zubehoer:form.zubehoer.filter(z=>z.name&&z.name.trim())}); }
     catch(err){ showToast("Fehler: "+(err.message||"Speichern fehlgeschlagen"),"err"); setSaving(false); }
   }
 
@@ -4766,25 +4936,38 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
             <div style={{position:"absolute",top:"100%",left:0,right:0,background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,marginTop:4,zIndex:10,boxShadow:"0 4px 16px #0002",maxHeight:200,overflowY:"auto"}}>
               {kundenGefiltert.map(k=>(
                 <div key={k.id} onClick={()=>{
-                  setForm(p=>({...p,kundeName:`${k.vorname} ${k.nachname}`,telefon:k.telefon||"",email:k.email||"",adresse:`${k.strasse||""} ${k.hausnummer||""}, ${k.plz||""} ${k.ort||""}`.trim()}));
+                  setForm(p=>({...p,vorname:k.vorname||"",nachname:k.nachname||"",telefon:k.telefon||"",email:k.email||"",strasse:k.strasse||"",hausnummer:k.hausnummer||"",plz:k.plz||"",ort:k.ort||"",land:k.land||"Deutschland",kundeId:k.id,kundeKdNr:k.kdNr||""}));
                   setKundeSuche("");
                 }} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}
                 onMouseEnter={e=>e.currentTarget.style.background=COLORS.card}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <strong>{k.nachname}, {k.vorname}</strong> {k.telefon&&<span style={{color:COLORS.muted}}>· {k.telefon}</span>}
+                  <strong>{k.nachname}, {k.vorname}</strong> {k.kdNr&&<span style={{color:COLORS.accent,fontSize:11,fontFamily:"'IBM Plex Mono'"}}>#{k.kdNr}</span>} {k.telefon&&<span style={{color:COLORS.muted}}>· {k.telefon}</span>}
                 </div>
               ))}
             </div>
           )}
         </div>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
-          <input placeholder="Name des Käufers *" value={form.kundeName} onChange={e=>F("kundeName",e.target.value)} style={inputStyle}/>
+          <input placeholder="Vorname *" value={form.vorname} onChange={e=>setForm(p=>recalc({...p,vorname:e.target.value,kundeId:"",kundeKdNr:""}))} style={inputStyle}/>
+          <input placeholder="Nachname *" value={form.nachname} onChange={e=>setForm(p=>recalc({...p,nachname:e.target.value,kundeId:"",kundeKdNr:""}))} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
           <input placeholder="Telefon" type="tel" value={form.telefon} onChange={e=>F("telefon",e.target.value)} style={inputStyle}/>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
           <input placeholder="E-Mail" type="email" value={form.email} onChange={e=>F("email",e.target.value)} style={inputStyle}/>
-          <input placeholder="Adresse" value={form.adresse} onChange={e=>F("adresse",e.target.value)} style={inputStyle}/>
         </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"2fr 1fr":"3fr 1fr",gap:10,marginBottom:10}}>
+          <input placeholder="Straße" value={form.strasse} onChange={e=>F("strasse",e.target.value)} style={inputStyle}/>
+          <input placeholder="Hausnr." value={form.hausnummer} onChange={e=>F("hausnummer",e.target.value)} style={inputStyle}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 2fr":"1fr 3fr",gap:10}}>
+          <input placeholder="PLZ" value={form.plz} onChange={e=>F("plz",e.target.value)} style={inputStyle}/>
+          <input placeholder="Ort" value={form.ort} onChange={e=>F("ort",e.target.value)} style={inputStyle}/>
+        </div>
+        {(form.vorname||form.nachname)&&(
+          form.kundeKdNr
+            ? <div style={{marginTop:10,fontSize:12,color:COLORS.accent}}>✓ Bestandskunde <strong>#{form.kundeKdNr}</strong> — wird mit dieser Kundennummer verrechnet.</div>
+            : <div style={{marginTop:10,fontSize:12,color:COLORS.muted}}>🆕 Neuer Kunde — wird beim Abschluss automatisch als Stammkunde mit nächster Kundennummer angelegt.</div>
+        )}
       </div>
 
       {/* FAHRRAD */}
@@ -4792,13 +4975,51 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
         <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🚲 FAHRRAD</div>
         {verfuegbarEnvanter.length>0&&(
           <div style={{marginBottom:10}}>
-            <select value={form.envanterId||""} onChange={e=>ausEnvanter(e.target.value)} style={{...inputStyle,fontSize:13}}>
-              <option value="">— Aus Lager wählen oder manuell eingeben —</option>
-              {verfuegbarEnvanter.map(e=>(
-                <option key={e.id} value={e.id}>🏪 {e.marke} {e.modell}{e.rahmengroesse?" ("+e.rahmengroesse+")":""}{e.preis?" · "+formatEuro(e.preis):""}</option>
-              ))}
-            </select>
-            {form.envanterId&&<div style={{fontSize:11,color:COLORS.green,marginTop:4}}>✓ Aus Lager — wird nach Verkauf als "Satıldı" markiert</div>}
+            {!form.envanterId ? (
+              <div style={{position:"relative"}}>
+                <input
+                  placeholder="🏪 Aus Lager wählen — tippen zum Suchen (Marke, Modell, Rahmen-Nr., Farbe)…"
+                  value={lagerSuche}
+                  onChange={e=>{setLagerSuche(e.target.value);setLagerOffen(true);}}
+                  onFocus={()=>setLagerOffen(true)}
+                  onBlur={()=>setTimeout(()=>setLagerOffen(false),150)}
+                  style={inputStyle}/>
+                {lagerOffen&&(
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,marginTop:4,zIndex:20,boxShadow:"0 4px 16px #0002",maxHeight:300,overflowY:"auto"}}>
+                    {lagerGefiltert.length===0 ? (
+                      <div style={{padding:"12px 14px",fontSize:12,color:COLORS.muted}}>Kein Treffer — oder unten manuell eingeben.</div>
+                    ) : lagerGefiltert.map(e=>(
+                      <div key={e.id}
+                        onMouseDown={()=>{ausEnvanter(e.id);setLagerSuche("");setLagerOffen(false);}}
+                        style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${COLORS.border}`}}
+                        onMouseEnter={ev=>ev.currentTarget.style.background=COLORS.card}
+                        onMouseLeave={ev=>ev.currentTarget.style.background="transparent"}>
+                        <div style={{fontSize:13,fontWeight:600,display:"flex",justifyContent:"space-between",gap:10}}>
+                          <span>🚲 {e.marke} {e.modell}</span>
+                          {e.preis&&<span style={{color:COLORS.accent,fontFamily:"'IBM Plex Mono'"}}>{formatEuro(e.preis)}</span>}
+                        </div>
+                        <div style={{fontSize:11,color:COLORS.muted,marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
+                          {e.typ&&<span>{e.typ}</span>}
+                          {e.rahmengroesse&&<span>📏 {e.rahmengroesse}</span>}
+                          {e.farbe&&<span>🎨 {e.farbe}</span>}
+                          {e.rahmennummer&&<span>🔖 {e.rahmennummer}</span>}
+                          {e.durum&&<span style={{color:COLORS.green}}>• {e.durum}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 14px",background:`${COLORS.green}14`,border:`1px solid ${COLORS.green}55`,borderRadius:8}}>
+                <div style={{fontSize:12,lineHeight:1.5}}>
+                  <strong>🏪 {form.marke} {form.modell}</strong>
+                  <span style={{color:COLORS.muted}}>{form.typ?` · ${form.typ}`:""}{form.rahmengroesse?` · 📏 ${form.rahmengroesse}`:""}{form.farbe?` · 🎨 ${form.farbe}`:""}{form.rahmennummer?` · 🔖 ${form.rahmennummer}`:""}</span>
+                  <div style={{color:COLORS.green,fontSize:11,marginTop:2}}>✓ wird nach Verkauf als „Satıldı“ markiert</div>
+                </div>
+                <button onClick={()=>ausEnvanter("")} style={{...btnSecondary,fontSize:12,padding:"6px 10px",whiteSpace:"nowrap"}}>✕ ändern</button>
+              </div>
+            )}
           </div>
         )}
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:10}}>
@@ -4893,73 +5114,24 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
   const zubehoer=vk.zubehoer||[];
 
   function drucken(){
-    if(!printRef.current)return;
     const win=window.open("","_blank");
     if(!win)return;
-    const zubRows=zubehoer.map(z=>`<div class="row"><span>${z.name||"—"}</span><span>${formatEuro(z.preis||0)}</span></div>`).join("");
     const rabatt=parseFloat(vk.rabatt)||0;
-    win.document.write(`<html><head><title>Kaufvertrag ${vk.nummer}</title>
-      <style>
-        body{font-family:sans-serif;color:#111;padding:${isMobile?16:36}px;line-height:1.5;font-size:13px;}
-        h1{color:#1a56a0;font-size:22px;margin-bottom:2px;}
-        .sub{color:#666;font-size:12px;margin-bottom:20px;}
-        .box{border:1px solid #ccc;border-radius:8px;padding:12px 16px;margin-bottom:12px;}
-        .label{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600;}
-        .row{display:flex;justify-content:space-between;padding:3px 0;font-size:13px;}
-        .row span:first-child{color:#555;}
-        .row span:last-child{font-weight:500;text-align:right;}
-        .total{background:#1a56a012;border-radius:8px;padding:10px 16px;display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#1a56a0;margin-top:4px;}
-        .agb{font-size:10px;color:#666;line-height:1.5;margin-top:8px;}
-        .sign{display:flex;justify-content:space-between;margin-top:40px;gap:40px;}
-        .sign div{flex:1;border-top:1px solid #333;padding-top:6px;font-size:11px;color:#555;text-align:center;}
-      </style></head><body>
-      <h1>Kaufvertrag / Rechnung</h1>
-      <div class="sub">Nr. ${vk.nummer} · ${firma&&firma.name?firma.name:"Drahtesel Plus"} · Datum: ${vk.erstellt}</div>
-
-      <div class="box">
-        <div class="label">Käufer</div>
-        <div class="row"><span>Name:</span><span>${vk.kundeName||"—"}</span></div>
-        ${vk.telefon?`<div class="row"><span>Telefon:</span><span>${vk.telefon}</span></div>`:""}
-        ${vk.email?`<div class="row"><span>E-Mail:</span><span>${vk.email}</span></div>`:""}
-        ${vk.adresse?`<div class="row"><span>Adresse:</span><span>${vk.adresse}</span></div>`:""}
-      </div>
-
-      <div class="box">
-        <div class="label">Fahrrad</div>
-        <div class="row"><span>Marke/Modell:</span><span>${vk.marke||""} ${vk.modell||""}</span></div>
-        ${vk.typ?`<div class="row"><span>Typ:</span><span>${vk.typ}</span></div>`:""}
-        ${vk.rahmengroesse?`<div class="row"><span>Rahmengröße:</span><span>${vk.rahmengroesse}</span></div>`:""}
-        ${vk.farbe?`<div class="row"><span>Farbe:</span><span>${vk.farbe}</span></div>`:""}
-        ${vk.rahmennummer?`<div class="row"><span>Rahmennummer:</span><span>${vk.rahmennummer}</span></div>`:""}
-        <div class="row"><span>Fahrrad-Preis:</span><span>${formatEuro(vk.fahrradPreis||0)}</span></div>
-      </div>
-
-      ${zubehoer.length>0?`<div class="box"><div class="label">Zubehör</div>${zubRows}</div>`:""}
-
-      ${rabatt>0?`<div class="box"><div class="row"><span>Rabatt:</span><span>- ${formatEuro(rabatt)}</span></div></div>`:""}
-
-      <div class="total"><span>Gesamtpreis (inkl. MwSt.):</span><span>${formatEuro(vk.gesamtpreis||0)}</span></div>
-
-      <div class="box" style="margin-top:12px;">
-        <div class="row"><span>Zahlungsart:</span><span>${vk.zahlungsart||"—"}</span></div>
-        <div class="row"><span>Garantie:</span><span>${vk.garantie&&vk.garantie!=="0"?vk.garantie+" Monate":"Keine"}</span></div>
-      </div>
-
-      <div class="box">
-        <div class="label">Hinweise</div>
-        <div class="agb">
-          Der Käufer bestätigt den Erhalt des oben genannten Fahrrads in einwandfreiem Zustand.
-          Die gesetzliche Gewährleistung gilt gemäß den Angaben. Gebrauchträder werden unter
-          Ausschluss der Sachmängelhaftung verkauft, soweit gesetzlich zulässig.
-        </div>
-      </div>
-
-      <div class="sign">
-        <div>Ort, Datum</div>
-        <div>Unterschrift Käufer</div>
-        <div>Unterschrift Verkäufer</div>
-      </div>
-      </body></html>`);
+    const fahrradBez=[vk.marke,vk.modell].filter(Boolean).join(" ")||"Fahrrad";
+    const betreff=[vk.marke,vk.modell,vk.typ].filter(Boolean).join(" ");
+    const items=[];
+    items.push({bez:fahrradBez+(vk.rahmennummer?` · Rahmen-Nr. ${vk.rahmennummer}`:""),ep:parseFloat(vk.fahrradPreis)||0,menge:1});
+    zubehoer.forEach(z=>{const p=parseFloat(z.preis)||0;const nm=(z.name||"").trim();if(nm||p)items.push({bez:nm||"Zubehör",ep:p,menge:1});});
+    if(rabatt>0)items.push({bez:"Rabatt",ep:-rabatt,menge:1});
+    const adrLines=(vk.strasse||vk.plz||vk.ort)
+      ? [`${vk.strasse||""} ${vk.hausnummer||""}`.trim(),`${vk.plz||""} ${vk.ort||""}`.trim(),(vk.land&&vk.land!=="Deutschland"?vk.land:"")].filter(Boolean)
+      : (vk.adresse||"").split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
+    win.document.write(rechnungDruckHTML({
+      nummer:vk.nummer, kundeNr:vk.kundeKdNr, datum:vk.erstellt||heute(),
+      empfName:vk.kundeName, empfLines:adrLines, empfTel:vk.telefon, empfEmail:vk.email,
+      betreff, items, gesamt:vk.gesamtpreis, zahlung:vk.zahlungsart,
+      garantie:vk.garantie, garantieLabel:"ab Kaufdatum", isMobile
+    }));
     win.document.close();
     setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
@@ -4971,7 +5143,7 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
           <h2 style={{fontSize:20,fontWeight:700}}>Verkauf #{vk.nummer}</h2>
         </div>
-        <button onClick={drucken} style={btnPrimary}>🖨️ Kaufvertrag drucken</button>
+        <button onClick={drucken} style={btnPrimary}>🖨️ Rechnung drucken</button>
       </div>
 
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
@@ -4981,9 +5153,10 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
 
       <div ref={printRef} style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px"}}>
         <VDetailRow label="Käufer" wert={vk.kundeName}/>
+        {vk.kundeKdNr&&<VDetailRow label="Kunden-Nr." wert={`#${vk.kundeKdNr}`}/>}
         {vk.telefon&&<VDetailRow label="Telefon" wert={vk.telefon}/>}
         {vk.email&&<VDetailRow label="E-Mail" wert={vk.email}/>}
-        {vk.adresse&&<VDetailRow label="Adresse" wert={vk.adresse}/>}
+        {(vk.strasse||vk.plz||vk.ort||vk.adresse)&&<VDetailRow label="Adresse" wert={(vk.strasse||vk.plz||vk.ort)?[`${vk.strasse||""} ${vk.hausnummer||""}`.trim(),`${vk.plz||""} ${vk.ort||""}`.trim()].filter(Boolean).join(", "):vk.adresse}/>}
         <div style={{height:1,background:COLORS.border,margin:"12px 0"}}/>
         <VDetailRow label="Fahrrad" wert={`${vk.marke||""} ${vk.modell||""}`}/>
         {vk.typ&&<VDetailRow label="Typ" wert={vk.typ}/>}
