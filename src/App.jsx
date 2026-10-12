@@ -429,11 +429,94 @@ function getFirma(){
     telefon:"030 / 246 37 912",mobil:"0176 / 234 88 885",email:"drahteselplus@google.com",
     web:"www.drahteselplus.de",steuerNr:"30/333/50218",ustId:"DE459175991",
     iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
-    geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false
+    geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false,qrBasis:"",etikettFormat:"endlos"
   };}catch{return {};}
 }
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
+// ── Gömülü QR kodlayıcı (byte-mode, EC-M, v1-6, interleaving) — bağımsız doğrulandı ──
+const DP_QR=(function(){
+// GF(256)
+  var EXP=new Array(512), LOG=new Array(256);
+  (function(){var x=1;for(var i=0;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x&0x100)x^=0x11d;}for(var i=255;i<512;i++)EXP[i]=EXP[i-255];})();
+  function gmul(a,b){if(a===0||b===0)return 0;return EXP[LOG[a]+LOG[b]];}
+  function rsGenPoly(n){var g=[1];for(var i=0;i<n;i++){var ng=new Array(g.length+1).fill(0);for(var j=0;j<g.length;j++){ng[j]^=gmul(g[j],EXP[i]);ng[j+1]^=g[j];}g=ng;}return g.reverse();}
+  function rsEnc(data,ecLen){var g=rsGenPoly(ecLen);var res=data.slice().concat(new Array(ecLen).fill(0));for(var i=0;i<data.length;i++){var c=res[i];if(c!==0){for(var j=0;j<g.length;j++)res[i+j]^=gmul(g[j],c);}}return res.slice(data.length);}
+  // Sürüm tablosu (byte-mode, EC-M): [size, totalDataCW, ecCWperBlock, byteCapacity]
+  var V={1:{size:21,ec:10,blocks:1,dataPer:16,cap:14,align:[]},2:{size:25,ec:16,blocks:1,dataPer:28,cap:26,align:[18]},3:{size:29,ec:26,blocks:1,dataPer:44,cap:42,align:[22]},4:{size:33,ec:18,blocks:2,dataPer:32,cap:62,align:[26]},5:{size:37,ec:24,blocks:2,dataPer:43,cap:84,align:[30]},6:{size:41,ec:16,blocks:4,dataPer:27,cap:106,align:[34]}};
+  function chooseVer(len){for(var v=1;v<=6;v++)if(len<=V[v].cap)return v;throw new Error("QR: veri cok uzun ("+len+" byte, maks 106)");}
+  function bytesOf(str){var out=[];for(var i=0;i<str.length;i++){var c=str.charCodeAt(i);if(c<128)out.push(c);else if(c<2048){out.push(192|(c>>6));out.push(128|(c&63));}else{out.push(224|(c>>12));out.push(128|((c>>6)&63));out.push(128|(c&63));}}return out;}
+  function makeData(bytes,ver){
+    var v=V[ver];var bits=[];
+    function push(val,n){for(var i=n-1;i>=0;i--)bits.push((val>>i)&1);}
+    push(4,4);push(bytes.length,8);
+    for(var i=0;i<bytes.length;i++)push(bytes[i],8);
+    var totalDataCW=v.blocks*v.dataPer;var cap=totalDataCW*8;
+    var term=Math.min(4,cap-bits.length);push(0,term);
+    while(bits.length%8!==0)bits.push(0);
+    var cw=[];for(var i=0;i<bits.length;i+=8){var b=0;for(var j=0;j<8;j++)b=(b<<1)|bits[i+j];cw.push(b);}
+    var pad=[0xEC,0x11],pi=0;while(cw.length<totalDataCW){cw.push(pad[pi%2]);pi++;}
+    var dataBlocks=[],ecBlocks=[];
+    for(var k=0;k<v.blocks;k++){var blk=cw.slice(k*v.dataPer,(k+1)*v.dataPer);dataBlocks.push(blk);ecBlocks.push(rsEnc(blk,v.ec));}
+    var out=[];
+    for(var i=0;i<v.dataPer;i++)for(var k=0;k<v.blocks;k++)out.push(dataBlocks[k][i]);
+    for(var i=0;i<v.ec;i++)for(var k=0;k<v.blocks;k++)out.push(ecBlocks[k][i]);
+    return out;
+  }
+  function buildMatrix(ver){var n=V[ver].size;var m=[],fn=[];for(var r=0;r<n;r++){m.push(new Array(n).fill(0));fn.push(new Array(n).fill(false));}return {m:m,fn:fn,n:n};}
+  function placeFinder(M,r,c){for(var i=-1;i<=7;i++)for(var j=-1;j<=7;j++){var rr=r+i,cc=c+j;if(rr<0||rr>=M.n||cc<0||cc>=M.n)continue;var inr=(i>=0&&i<=6&&(j===0||j===6))||(j>=0&&j<=6&&(i===0||i===6))||(i>=2&&i<=4&&j>=2&&j<=4);M.m[rr][cc]=inr?1:0;M.fn[rr][cc]=true;}}
+  function placeAlign(M,ver){var cs=V[ver].align;for(var a=0;a<cs.length;a++){for(var b=0;b<cs.length;b++){var r=cs[a],c=cs[b];if(M.fn[r][c])continue;for(var i=-2;i<=2;i++)for(var j=-2;j<=2;j++){var v=(Math.max(Math.abs(i),Math.abs(j))!==1)?1:0;M.m[r+i][c+j]=v;M.fn[r+i][c+j]=true;}}}}
+  function placeTiming(M){for(var i=8;i<M.n-8;i++){var v=(i%2===0)?1:0;if(!M.fn[6][i]){M.m[6][i]=v;M.fn[6][i]=true;}if(!M.fn[i][6]){M.m[i][6]=v;M.fn[i][6]=true;}}}
+  function reserveFormat(M){var n=M.n;
+    for(var i=0;i<=5;i++)M.fn[8][i]=true;
+    M.fn[8][7]=true;M.fn[8][8]=true;M.fn[7][8]=true;
+    for(var i=9;i<15;i++)M.fn[14-i][8]=true;
+    for(var i=0;i<8;i++)M.fn[n-1-i][8]=true;
+    for(var i=8;i<15;i++)M.fn[8][n-15+i]=true;
+    M.m[n-8][8]=1;M.fn[n-8][8]=true;}
+  function placeData(M,all){var n=M.n;var bits=[];for(var i=0;i<all.length;i++)for(var b=7;b>=0;b--)bits.push((all[i]>>b)&1);var idx=0;var up=true;for(var col=n-1;col>0;col-=2){if(col===6)col--;for(var t=0;t<n;t++){var row=up?(n-1-t):t;for(var k=0;k<2;k++){var c=col-k;if(!M.fn[row][c]){var bit=idx<bits.length?bits[idx]:0;M.m[row][c]=bit;idx++;}}}up=!up;}}
+  function maskFn(k,i,j){switch(k){case 0:return (i+j)%2===0;case 1:return i%2===0;case 2:return j%3===0;case 3:return (i+j)%3===0;case 4:return (Math.floor(i/2)+Math.floor(j/3))%2===0;case 5:return ((i*j)%2)+((i*j)%3)===0;case 6:return (((i*j)%2)+((i*j)%3))%2===0;case 7:return (((i+j)%2)+((i*j)%3))%2===0;}}
+  function applyMask(M,k){var n=M.n;var out=[];for(var r=0;r<n;r++){out.push(M.m[r].slice());for(var c=0;c<n;c++){if(!M.fn[r][c]&&maskFn(k,r,c))out[r][c]^=1;}}return out;}
+  function fmtBits(ecBits2,mask){var data=(ecBits2<<3)|mask;
+    // BCH(15,5)
+    var g=0x537;var d=data<<10;var r=d;for(var i=14;i>=10;i--){if((r>>i)&1)r^=g<<(i-10);}var bch=(data<<10)|(r&0x3ff);return bch^0x5412;}
+  function placeFormat(M,mask){var n=M.n;var bits=fmtBits(0,mask);function gb(i){return (bits>>i)&1;}
+    for(var i=0;i<=5;i++)M.m[8][i]=gb(i);
+    M.m[8][7]=gb(6);M.m[8][8]=gb(7);M.m[7][8]=gb(8);
+    for(var i=9;i<15;i++)M.m[14-i][8]=gb(i);
+    for(var i=0;i<8;i++)M.m[n-1-i][8]=gb(i);
+    for(var i=8;i<15;i++)M.m[8][n-15+i]=gb(i);
+    M.m[n-8][8]=1;}
+  function penalty(mat){var n=mat.length,p=0;
+    for(var r=0;r<n;r++){var run=1;for(var c=1;c<n;c++){if(mat[r][c]===mat[r][c-1])run++;else{if(run>=5)p+=3+(run-5);run=1;}}if(run>=5)p+=3+(run-5);}
+    for(var c=0;c<n;c++){var run=1;for(var r=1;r<n;r++){if(mat[r][c]===mat[r-1][c])run++;else{if(run>=5)p+=3+(run-5);run=1;}}if(run>=5)p+=3+(run-5);}
+    for(var r=0;r<n-1;r++)for(var c=0;c<n-1;c++){var v=mat[r][c];if(v===mat[r][c+1]&&v===mat[r+1][c]&&v===mat[r+1][c+1])p+=3;}
+    var pat=[1,0,1,1,1,0,1];function chk(get){var cnt=0;for(var a=0;a<n;a++)for(var b=0;b<=n-7;b++){var ok=true;for(var k=0;k<7;k++)if(get(a,b+k)!==pat[k]){ok=false;break;}if(ok){/*check 4 light before or after*/cnt++;}}return cnt;}
+    // simplified finder-like penalty
+    function seqPenaltyRows(){var c=0;for(var r=0;r<n;r++){for(var b=0;b<=n-7;b++){var ok=true;for(var k=0;k<7;k++)if(mat[r][b+k]!==pat[k]){ok=false;break;}if(ok)c+=40;}}return c;}
+    function seqPenaltyCols(){var c=0;for(var cc=0;cc<n;cc++){for(var b=0;b<=n-7;b++){var ok=true;for(var k=0;k<7;k++)if(mat[b+k][cc]!==pat[k]){ok=false;break;}if(ok)c+=40;}}return c;}
+    p+=seqPenaltyRows()+seqPenaltyCols();
+    var dark=0;for(var r=0;r<n;r++)for(var c=0;c<n;c++)dark+=mat[r][c];var pct=dark*100/(n*n);var k=Math.floor(Math.abs(pct-50)/5);p+=k*10;
+    return p;}
+  function qrMatrix(text){
+    var bytes=bytesOf(text);var ver=chooseVer(bytes.length);var all=makeData(bytes,ver);
+    var base=buildMatrix(ver);
+    placeFinder(base,0,0);placeFinder(base,0,base.n-7);placeFinder(base,base.n-7,0);
+    placeAlign(base,ver);placeTiming(base);reserveFormat(base);
+    placeData(base,all);
+    var best=null,bestP=1e9,bestMask=0;
+    for(var k=0;k<8;k++){var masked=applyMask(base,k);
+      // yerleştir format + ölç
+      var tmp={m:masked,fn:base.fn,n:base.n};placeFormat(tmp,k);
+      var pen=penalty(masked);if(pen<bestP){bestP=pen;best=masked;bestMask=k;}}
+    // final: en iyi maskı yeniden format ile
+    var finalM=applyMask(base,bestMask);var tmp={m:finalM,fn:base.fn,n:base.n};placeFormat(tmp,bestMask);
+    return {size:base.n,modules:finalM,version:ver,mask:bestMask};
+  }
+  function qrSvg(text,px,quiet){quiet=quiet==null?4:quiet;var q=qrMatrix(text);var n=q.size;var total=n+quiet*2;var cell=px/total;var r='<svg xmlns="http://www.w3.org/2000/svg" width="'+px+'" height="'+px+'" viewBox="0 0 '+total+' '+total+'" shape-rendering="crispEdges"><rect width="'+total+'" height="'+total+'" fill="#fff"/>';for(var y=0;y<n;y++)for(var x=0;x<n;x++){if(q.modules[y][x])r+='<rect x="'+(x+quiet)+'" y="'+(y+quiet)+'" width="1" height="1" fill="#000"/>';}r+='</svg>';return r;}
+return {qrMatrix:qrMatrix,qrSvg:qrSvg};
+})();
+
 
 function parseDatum(str){
   if(!str)return null;
@@ -668,6 +751,7 @@ export default function DrahteselApp() {
   const [selKunde,setSelKunde]=useState(null);
   const [selBisiklet,setSelBisiklet]=useState(null);
   const [selAuftrag,setSelAuftrag]=useState(null);
+  const deepLinkDoneRef=useRef(false);
   const [selRechnung,setSelRechnung]=useState(null);
   const [prevScreen,setPrevScreen]=useState("auftraege");
   const [breadcrumb,setBreadcrumb]=useState([]);
@@ -772,6 +856,25 @@ export default function DrahteselApp() {
       setVerkaeufe((vkR||[]).map(rowToVerkauf));
       setSelKunde(prev=>prev?neueKunden.find(k=>k.id===prev.id)||prev:null);
       setSelAuftrag(prev=>prev?neueAuftraege.find(a=>a.id===prev.id)||prev:null);
+      // Deep-link: QR ?a=NR (veya #a=NR / ?auftrag=NR) → ilgili Auftrag'ı aç (yalnızca ilk yüklemede)
+      try{
+        if(!deepLinkDoneRef.current){
+          const params=new URLSearchParams(window.location.search||"");
+          let nr=params.get("a")||params.get("auftrag");
+          if(!nr&&window.location.hash){const hm=window.location.hash.match(/[#&]a=([^&]+)/);if(hm)nr=decodeURIComponent(hm[1]);}
+          if(nr){
+            const a=neueAuftraege.find(x=>String(x.nummer)===String(nr));
+            if(a){
+              const k=neueKunden.find(x=>x.id===a.kundeId)||{id:a.kundeId,vorname:a.kundeVorname,nachname:a.kundeNachname,kdNr:a.kundeKdNr};
+              setSelAuftrag(a);setSelKunde(k);setPrevScreen("auftraege");
+              setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${a.nummer}`}]);
+              setScreen("auftrag-detail");
+              try{window.history.replaceState({},"",window.location.pathname);}catch{}
+            }else{ showToast("Auftrag #"+nr+" nicht gefunden.","err"); }
+            deepLinkDoneRef.current=true;
+          }
+        }
+      }catch{}
     } catch(e){ showToast("Verbindungsfehler: "+e.message,"err"); }
     finally { setLaden(false); }
   }, [benutzer]);
@@ -1927,6 +2030,137 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
     win.document.close();setTimeout(()=>{try{win.print();}catch{win.focus();}},500);
   }
 
+  // QR içeriği: firma web varsa ileride link olarak kullanılabilir URL, yoksa okunur jeton (≤42 bayt)
+  function auftragQrSvg(px){
+    const f=getFirma();
+    let base=(f.qrBasis||"").trim();
+    if(!base){try{base=window.location.origin+window.location.pathname;}catch{base="";}}
+    base=base.replace(/\/+$/,"");
+    let t=base?`${base}/?a=${auftrag.nummer}`:`Auftrag ${auftrag.nummer} - ${f.zusatz||f.name||"Drahtesel Plus"}`;
+    try{return DP_QR.qrSvg(t,px||300);}catch(e){try{return DP_QR.qrSvg(`Auftrag ${auftrag.nummer}`,px||300);}catch{return "";}}
+  }
+
+  // A4: Üstte müşteri nüshası (Kundenbeleg) + altta kesilip bisiklete asılacak Anhänger
+  function druckenBeleg(){
+    const win=window.open("","_blank"); if(!win)return;
+    const f=getFirma(); const qr=auftragQrSvg(320);
+    const posRows=(auftrag.positionen||[]).map((p,i)=>`<tr><td>${i+1}</td><td>${p.beschreibung||""}</td><td class="r">${p.menge||1} ×</td><td class="r">${formatEuro(p.einzelpreis||0)}</td><td class="r">${formatEuro((p.einzelpreis||0)*(p.menge||1))}</td></tr>`).join("");
+    const brutto=parseFloat(auftrag.brutto)||0;
+    const kundeName=`${kunde.vorname||""} ${kunde.nachname||""}`.trim()||"—";
+    const bike=[auftrag.fahrradModell,auftrag.fahrradFarbe].filter(Boolean).join(" · ");
+    win.document.write(`<html><head><meta charset="utf-8"><title>Beleg Auftrag ${auftrag.nummer}</title><style>
+      *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:14mm;font-size:12px;line-height:1.45;}
+      .head{display:flex;justify-content:space-between;gap:20px;margin-bottom:14px;}
+      .fn{font-weight:700;font-size:15px;color:#1a56a0;} .muted{color:#666;font-size:11px;}
+      .tit{text-align:right;} .tit h1{font-size:17px;margin:0 0 2px;} .tit .nr{font-size:13px;font-weight:600;}
+      .qr{width:26mm;height:26mm;} .qr svg{width:26mm;height:26mm;display:block;}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0;}
+      .box{border:1px solid #ccc;border-radius:6px;padding:10px 12px;}
+      .lbl{font-size:10px;color:#888;font-weight:700;letter-spacing:.5px;margin-bottom:4px;}
+      table{width:100%;border-collapse:collapse;margin:6px 0;} th,td{padding:5px 7px;font-size:11px;border-bottom:1px solid #eee;text-align:left;}
+      th{background:#f5f5f5;border-bottom:2px solid #111;} td.r,th.r{text-align:right;}
+      .sum{text-align:right;font-weight:700;font-size:13px;margin-top:4px;}
+      .note{margin-top:8px;font-size:11px;color:#444;}
+      .cut{border-top:2px dashed #999;margin:16px 0 10px;position:relative;text-align:center;}
+      .cut span{position:relative;top:-9px;background:#fff;padding:0 10px;color:#999;font-size:11px;}
+      .tag{border:2px solid #111;border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;gap:14px;align-items:flex-start;max-width:120mm;}
+      .tag .big{font-size:30px;font-weight:800;letter-spacing:1px;line-height:1;}
+      .tag .qr2{width:28mm;height:28mm;} .tag .qr2 svg{width:28mm;height:28mm;display:block;}
+      .hole{width:9mm;height:9mm;border:2px solid #111;border-radius:50%;margin-bottom:6px;}
+      @media print{body{padding:10mm;}}
+    </style></head><body>
+      <!-- KUNDENBELEG -->
+      <div class="head">
+        <div style="display:flex;gap:10px;align-items:center;">
+          ${LOGO_SRC?`<img src="${LOGO_SRC}" style="width:14mm;height:14mm;object-fit:contain;flex-shrink:0;"/>`:""}
+          <div>
+            <div class="fn">${f.zusatz||f.name||"Drahtesel Plus"}</div>
+            <div class="muted">${f.strasse||""} · ${f.plz||""} ${f.ort||""}</div>
+            <div class="muted">Tel: ${f.telefon||""}${f.mobil?" · "+f.mobil:""}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <div class="tit"><h1>Auftragsbestätigung</h1><div class="nr">Auftrag Nr. ${auftrag.nummer}</div><div class="muted">Datum: ${auftrag.erstellt||heute()}</div></div>
+          <div class="qr">${qr}</div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="box"><div class="lbl">KUNDE</div><div style="font-weight:600">${kundeName}</div>
+          ${kunde.strasse?`<div class="muted">${kunde.strasse} ${kunde.hausnr||kunde.hausnummer||""}</div>`:""}
+          ${(kunde.plz||kunde.ort)?`<div class="muted">${kunde.plz||""} ${kunde.ort||""}</div>`:""}
+          ${kunde.telefon?`<div class="muted">📞 ${kunde.telefon}</div>`:""}</div>
+        <div class="box"><div class="lbl">FAHRRAD</div><div style="font-weight:600">${auftrag.fahrradModell||"—"}</div>
+          ${auftrag.fahrradFarbe?`<div class="muted">Farbe: ${auftrag.fahrradFarbe}</div>`:""}
+          ${auftrag.fahrradNr?`<div class="muted">Rahmen-Nr.: ${auftrag.fahrradNr}</div>`:""}
+          ${auftrag.annahmeDatum?`<div class="muted">Annahme: ${auftrag.annahmeDatum}</div>`:""}
+          ${auftrag.voraussichtlichFertig?`<div class="muted">Voraussichtlich fertig: ${auftrag.voraussichtlichFertig}</div>`:""}</div>
+      </div>
+      ${auftrag.kundenbeschwerden?`<div class="box" style="margin-bottom:8px"><div class="lbl">PROBLEM / KUNDENANGABE</div><div>${auftrag.kundenbeschwerden}</div></div>`:""}
+      ${(auftrag.positionen&&auftrag.positionen.length)?`<div class="lbl" style="margin-top:6px">AUSZUFÜHRENDE ARBEITEN</div>
+      <table><thead><tr><th>Pos</th><th>Beschreibung</th><th class="r">Menge</th><th class="r">Einzel</th><th class="r">Gesamt</th></tr></thead><tbody>${posRows}</tbody></table>
+      <div class="sum">Kostenvoranschlag (geschätzt, inkl. MwSt.): ${formatEuro(brutto)}</div>`:`<div class="note">Arbeiten werden nach Diagnose festgelegt.</div>`}
+      <div class="note"><strong>Bitte diesen Beleg bei Abholung vorzeigen.</strong> Öffnungszeiten & Rückfragen: ${f.telefon||""}</div>
+
+      <!-- SCHNITTLINIE -->
+      <div class="cut"><span>✂  Hier abschneiden — Anhänger am Fahrrad befestigen</span></div>
+
+      <!-- FAHRRAD-ANHÄNGER -->
+      <div class="tag">
+        <div>
+          <div class="hole"></div>
+          <div style="display:flex;align-items:center;gap:6px;">${LOGO_SRC?`<img src="${LOGO_SRC}" style="width:9mm;height:9mm;object-fit:contain;"/>`:""}<span style="font-size:11px;color:#666;font-weight:600;">${f.zusatz||f.name||"Drahtesel Plus"}</span></div>
+          <div class="big">#${auftrag.nummer}</div>
+          <div style="margin-top:6px;font-size:13px;font-weight:600;">${kunde.nachname||kundeName}${kunde.telefon?` · 📞 ${kunde.telefon}`:""}</div>
+          <div style="font-size:12px;color:#333;">${bike||auftrag.fahrradModell||""}</div>
+          ${auftrag.fahrradNr?`<div style="font-size:11px;color:#666;">Rahmen-Nr.: ${auftrag.fahrradNr}</div>`:""}
+          <div style="font-size:11px;color:#666;margin-top:4px;">Annahme: ${auftrag.annahmeDatum||auftrag.erstellt||heute()}${auftrag.voraussichtlichFertig?` · Fertig: ${auftrag.voraussichtlichFertig}`:""}</div>
+        </div>
+        <div style="text-align:center;"><div class="qr2">${qr}</div><div style="font-size:9px;color:#888;margin-top:2px;">scan</div></div>
+      </div>
+      </body></html>`);
+    win.document.close(); setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
+  }
+
+  // Etiket yazıcı (Brother QL tipi) — format: endlos 62mm / 62×100mm / 62×29mm (Firma ayarı)
+  function druckenEtikett(){
+    const win=window.open("","_blank"); if(!win)return;
+    const f=getFirma(); const fmt=f.etikettFormat||"endlos";
+    const pageSize=fmt==="62x100"?"62mm 100mm":fmt==="62x29"?"62mm 29mm":"62mm auto";
+    const qr=auftragQrSvg(fmt==="62x29"?200:260);
+    const bike=[auftrag.fahrradModell,auftrag.fahrradFarbe].filter(Boolean).join(" · ");
+    const name=`${kunde.nachname||""} ${kunde.vorname||""}`.trim();
+    let bodyHtml;
+    if(fmt==="62x29"){
+      bodyHtml=`<div class="mini"><div class="ml"><div class="mnr">#${auftrag.nummer}</div><div class="mnm">${name}</div><div class="mbk">${bike||auftrag.fahrradModell||""}</div></div><div class="mq">${qr}</div></div>`;
+    }else{
+      bodyHtml=`${LOGO_SRC?`<img class="logo" src="${LOGO_SRC}"/>`:""}
+      <div class="shop">${f.zusatz||f.name||"Drahtesel Plus"}</div>
+      <div class="nr">#${auftrag.nummer}</div>
+      <div class="qr">${qr}</div>
+      <div class="row b">${name}</div>
+      ${kunde.telefon?`<div class="row">📞 ${kunde.telefon}</div>`:""}
+      <div class="row">${bike||auftrag.fahrradModell||""}</div>
+      ${auftrag.fahrradNr?`<div class="row">Rahmen: ${auftrag.fahrradNr}</div>`:""}
+      <div class="small">Annahme: ${auftrag.annahmeDatum||auftrag.erstellt||heute()}${auftrag.voraussichtlichFertig?` · Fertig: ${auftrag.voraussichtlichFertig}`:""}</div>`;
+    }
+    win.document.write(`<html><head><meta charset="utf-8"><title>Etikett ${auftrag.nummer}</title><style>
+      @page{size:${pageSize};margin:${fmt==="62x29"?"1.5mm":"3mm"};}
+      *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;padding:0;width:${fmt==="62x29"?"59mm":"56mm"};}
+      .logo{display:block;width:12mm;height:12mm;object-fit:contain;margin:0 auto 1mm;}
+      .shop{font-size:9px;font-weight:700;text-align:center;margin-bottom:1mm;}
+      .nr{font-size:34px;font-weight:800;text-align:center;line-height:1;letter-spacing:1px;}
+      .qr{width:30mm;height:30mm;margin:2mm auto;} .qr svg{width:30mm;height:30mm;display:block;}
+      .row{font-size:11px;text-align:center;margin-top:0.5mm;} .b{font-weight:700;font-size:12px;}
+      .small{font-size:9px;text-align:center;margin-top:1mm;}
+      .mini{display:flex;align-items:center;gap:2mm;height:26mm;}
+      .ml{flex:1;min-width:0;} .mnr{font-size:22px;font-weight:800;line-height:1;}
+      .mnm{font-size:11px;font-weight:700;margin-top:.5mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .mbk{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .mq{width:22mm;height:22mm;flex-shrink:0;} .mq svg{width:22mm;height:22mm;display:block;}
+    </style></head><body>${bodyHtml}</body></html>`);
+    win.document.close(); setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
+  }
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20}}>
@@ -1936,6 +2170,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnSecondary}>🖨️ Drucken</button>
+          <button onClick={druckenBeleg} style={btnSecondary}>🏷️ Beleg + Anhänger</button>
+          <button onClick={druckenEtikett} style={btnSecondary}>🏷️ Etikett 62mm</button>
           {onLoeschen&&(auftrag.status==="Abgerechnet"||auftrag.status==="Abgeholt")&&(
             <button onClick={()=>showConfirm("Auftrag wirklich löschen?",()=>onLoeschen(auftrag.id),{icon:"🗑️",okLabel:"Sil"})}
               style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red}}>🗑️ Sil</button>
@@ -3333,7 +3569,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
       email:"drahteselplus@google.com",web:"www.drahteselplus.de",
       steuerNr:"30/333/50218",ustId:"DE459175991",
       iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
-      geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false
+      geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false,qrBasis:"",etikettFormat:"endlos"
     };}catch{return {};}
   });
   const FF=(k,v)=>setFirma(p=>{const n={...p,[k]:v};try{localStorage.setItem("dp_firma",JSON.stringify(n));}catch{}return n;});
@@ -3444,6 +3680,26 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
         </div>
         <div style={{fontSize:11,color:COLORS.muted,marginTop:8,lineHeight:1.5}}>
           Standart bisiklet/aksesuar satışında MwSt %19'dur. Kleinunternehmer işaretlenirse faturada MwSt gösterilmez ve §19 notu eklenir.
+        </div>
+      </div>
+      <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:10,padding:"14px 16px",marginTop:12}}>
+        <div style={{fontWeight:600,marginBottom:10,fontSize:13}}>🏷️ Etiket & QR (Auftrag-Anhänger)</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>
+            <label style={labelStyle}>Etikettenformat (Etikettendrucker)</label>
+            <select value={firma.etikettFormat||"endlos"} onChange={e=>FF("etikettFormat",e.target.value)} style={inputStyle}>
+              <option value="endlos">62 mm endlos (Rolle)</option>
+              <option value="62x100">62 × 100 mm (Etikett)</option>
+              <option value="62x29">62 × 29 mm (klein)</option>
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle}>QR-Basis-URL <span style={{color:COLORS.muted}}>(optional)</span></label>
+            <input placeholder="leer = App-Adresse automatisch" value={firma.qrBasis||""} onChange={e=>FF("qrBasis",e.target.value)} style={inputStyle}/>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:COLORS.muted,marginTop:8,lineHeight:1.5}}>
+          QR kodu okutunca ilgili Auftrag açılır. Boş bırakılırsa uygulamanın kendi adresi kullanılır; farklı bir alan adın varsa buraya yaz (ör. https://werkstatt.drahteselplus.de).
         </div>
       </div>
       <button onClick={()=>showToast("Firma bilgileri kaydedildi! ✓")} style={{...btnPrimary,marginTop:16,width:"100%"}}>💾 Firma Bilgilerini Kaydet</button>
