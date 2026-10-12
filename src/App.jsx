@@ -434,6 +434,34 @@ function getFirma(){
 }
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
+// Mobil-uyumlu yazdırma: yeni pencere/sekme yerine gizli iframe (telefon/PWA'da takılmayı önler).
+function druckeHTML(html){
+  try{
+    var old=document.getElementById("dp-print-frame");
+    if(old&&old.parentNode)old.parentNode.removeChild(old);
+    var f=document.createElement("iframe");
+    f.id="dp-print-frame";
+    f.setAttribute("aria-hidden","true");
+    f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+    document.body.appendChild(f);
+    var doc=f.contentDocument||(f.contentWindow&&f.contentWindow.document);
+    doc.open();doc.write(html);doc.close();
+    var printed=false;
+    function cleanup(){setTimeout(function(){try{if(f&&f.parentNode)f.parentNode.removeChild(f);}catch(e){}},1500);}
+    function go(){
+      if(printed)return;printed=true;
+      try{f.contentWindow.focus();}catch(e){}
+      try{f.contentWindow.print();}
+      catch(e){try{var w=window.open("","_blank");if(w){w.document.write(html);w.document.close();setTimeout(function(){try{w.print();}catch(e2){}},400);}}catch(e3){}}
+      cleanup();
+    }
+    try{f.contentWindow.onafterprint=cleanup;}catch(e){}
+    if(doc.readyState==="complete")setTimeout(go,350);
+    else{f.onload=function(){setTimeout(go,350);};setTimeout(go,900);}
+  }catch(err){
+    try{var w=window.open("","_blank");if(w){w.document.write(html);w.document.close();setTimeout(function(){try{w.print();}catch(e){}},400);}}catch(e){}
+  }
+}
 // ── Gömülü QR kodlayıcı (byte-mode, EC-M, v1-6, interleaving) — bağımsız doğrulandı ──
 const DP_QR=(function(){
 // GF(256)
@@ -2013,9 +2041,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   useEffect(()=>{if(istAbgerechnet)setPosEditModus(false);},[istAbgerechnet]);
 
   function drucken(){
-    const win=window.open("","_blank");
     if(!printRef.current)return;
-    win.document.write(`<html><head><title>Arbeitsauftrag #${auftrag.nummer}</title>
+    druckeHTML(`<html><head><title>Arbeitsauftrag #${auftrag.nummer}</title>
     <style>body{font-family:sans-serif;margin:0;padding:32px;font-size:13px;color:#111;}
     table{width:100%;border-collapse:collapse;}th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #eee;}
     th{background:#f5f5f5;font-weight:600;font-size:11px;}
@@ -2027,7 +2054,6 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
     .badge{display:inline-block;border-radius:20px;padding:3px 12px;font-size:12px;font-weight:600;}
     .footer{margin-top:40px;padding-top:14px;border-top:1px solid #ddd;font-size:11px;color:#888;display:flex;justify-content:space-between;}
     </style></head><body>${printRef.current.innerHTML}</body></html>`);
-    win.document.close();setTimeout(()=>{try{win.print();}catch{win.focus();}},500);
   }
 
   // QR içeriği: firma web varsa ileride link olarak kullanılabilir URL, yoksa okunur jeton (≤42 bayt)
@@ -2042,13 +2068,12 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
 
   // A4: Üstte müşteri nüshası (Kundenbeleg) + altta kesilip bisiklete asılacak Anhänger
   function druckenBeleg(){
-    const win=window.open("","_blank"); if(!win)return;
     const f=getFirma(); const qr=auftragQrSvg(320);
     const posRows=(auftrag.positionen||[]).map((p,i)=>`<tr><td>${i+1}</td><td>${p.beschreibung||""}</td><td class="r">${p.menge||1} ×</td><td class="r">${formatEuro(p.einzelpreis||0)}</td><td class="r">${formatEuro((p.einzelpreis||0)*(p.menge||1))}</td></tr>`).join("");
     const brutto=parseFloat(auftrag.brutto)||0;
     const kundeName=`${kunde.vorname||""} ${kunde.nachname||""}`.trim()||"—";
     const bike=[auftrag.fahrradModell,auftrag.fahrradFarbe].filter(Boolean).join(" · ");
-    win.document.write(`<html><head><meta charset="utf-8"><title>Beleg Auftrag ${auftrag.nummer}</title><style>
+    druckeHTML(`<html><head><meta charset="utf-8"><title>Beleg Auftrag ${auftrag.nummer}</title><style>
       *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:14mm;font-size:12px;line-height:1.45;}
       .head{display:flex;justify-content:space-between;gap:20px;margin-bottom:14px;}
       .fn{font-weight:700;font-size:15px;color:#1a56a0;} .muted{color:#666;font-size:11px;}
@@ -2118,12 +2143,10 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
         <div style="text-align:center;"><div class="qr2">${qr}</div><div style="font-size:9px;color:#888;margin-top:2px;">scan</div></div>
       </div>
       </body></html>`);
-    win.document.close(); setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
 
   // Etiket yazıcı (Brother QL tipi) — format: endlos 62mm / 62×100mm / 62×29mm (Firma ayarı)
   function druckenEtikett(){
-    const win=window.open("","_blank"); if(!win)return;
     const f=getFirma(); const fmt=f.etikettFormat||"endlos";
     const pageSize=fmt==="62x100"?"62mm 100mm":fmt==="62x29"?"62mm 29mm":"62mm auto";
     const qr=auftragQrSvg(fmt==="62x29"?200:260);
@@ -2143,7 +2166,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       ${auftrag.fahrradNr?`<div class="row">Rahmen: ${auftrag.fahrradNr}</div>`:""}
       <div class="small">Annahme: ${auftrag.annahmeDatum||auftrag.erstellt||heute()}${auftrag.voraussichtlichFertig?` · Fertig: ${auftrag.voraussichtlichFertig}`:""}</div>`;
     }
-    win.document.write(`<html><head><meta charset="utf-8"><title>Etikett ${auftrag.nummer}</title><style>
+    druckeHTML(`<html><head><meta charset="utf-8"><title>Etikett ${auftrag.nummer}</title><style>
       @page{size:${pageSize};margin:${fmt==="62x29"?"1.5mm":"3mm"};}
       *{box-sizing:border-box;} body{font-family:Arial,Helvetica,sans-serif;color:#000;margin:0;padding:0;width:${fmt==="62x29"?"59mm":"56mm"};}
       .logo{display:block;width:12mm;height:12mm;object-fit:contain;margin:0 auto 1mm;}
@@ -2158,7 +2181,6 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       .mbk{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .mq{width:22mm;height:22mm;flex-shrink:0;} .mq svg{width:22mm;height:22mm;display:block;}
     </style></head><body>${bodyHtml}</body></html>`);
-    win.document.close(); setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
 
   return(
@@ -3280,18 +3302,14 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   const [editModus,setEditModus]=useState(false);
   const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
   function drucken(){
-    const win=window.open("","_blank");
-    if(!win)return;
     const items=(rechnung.positionen||[]).map(p=>({bez:p.beschreibung,ep:parseFloat(p.einzelpreis)||0,menge:(p.menge==null?1:p.menge)}));
     const empfLines=[`${k.strasse||""} ${k.hausnr||""}`.trim(),`${k.plz||""} ${k.ort||""}`.trim(),k.land||"Deutschland"];
-    win.document.write(rechnungDruckHTML({
+    druckeHTML(rechnungDruckHTML({
       nummer:rechnung.nummer, kundeNr:rechnung.kundeKdNr||k.kdNr, datum:rechnung.erstellt,
       empfName:`${k.vorname||""} ${k.nachname||""}`.trim(), empfLines,
       empfTel:k.telefon, empfEmail:k.email,
       betreff:rechnung.fahrradModell, items, gesamt:rechnung.brutto, zahlung:rechnung.bezahlung
     }));
-    win.document.close();
-    setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
   return(
     <div style={{maxWidth:"100%"}}>
@@ -3601,9 +3619,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
             <div style={{fontSize:11,color:COLORS.muted,wordBreak:"break-all",textAlign:"center",maxWidth:320}}>{kundeUrl}</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
               <button onClick={()=>{
-                const w=window.open("","_blank");
-                if(!w)return;
-                w.document.write(`<html><head><title>Kunden-QR-Code — Drahtesel Plus</title>
+                druckeHTML(`<html><head><title>Kunden-QR-Code — Drahtesel Plus</title>
                   <style>body{font-family:sans-serif;text-align:center;padding:40px;}
                   h1{color:#1a56a0;}img{margin:24px 0;}p{color:#555;font-size:16px;max-width:400px;margin:8px auto;}</style>
                   </head><body>
@@ -3613,8 +3629,6 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
                   <img src="${qrUrlBig}" width="300" height="300"/>
                   <p style="font-size:13px;color:#888;">Schnell · Einfach · DSGVO-konform</p>
                   </body></html>`);
-                w.document.close();
-                setTimeout(()=>{try{w.print();}catch{w.focus();}},400);
               }} style={{...btnPrimary,fontSize:13,padding:"8px 18px"}}>🖨️ QR-Code drucken</button>
               <button onClick={()=>{
                 try{navigator.clipboard.writeText(kundeUrl);showToast("Link kopiert!");}
@@ -4723,8 +4737,6 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
 
   function drucken(){
     if(!printRef.current)return;
-    const win=window.open("","_blank");
-    if(!win)return;
     const raederHtml=raeder.map((r,i)=>`
       <div class="box">
         <div class="label">Fahrrad ${raeder.length>1?(i+1):""}</div>
@@ -4733,7 +4745,7 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
         ${r.zubehoer?`<div class="row"><span>Zubehör:</span><span>${r.zubehoer}</span></div>`:""}
         ${r.zustand?`<div class="row"><span>Zustand bei Übergabe:</span><span>${r.zustand}</span></div>`:""}
       </div>`).join("");
-    win.document.write(`<html><head><title>Mietvertrag ${v.nummer}</title>
+    druckeHTML(`<html><head><title>Mietvertrag ${v.nummer}</title>
       <style>
         body{font-family:sans-serif;color:#111;padding:${isMobile?16:36}px;line-height:1.5;font-size:13px;}
         h1{color:#1a56a0;font-size:22px;margin-bottom:2px;}
@@ -4791,8 +4803,6 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
         <div>Unterschrift Vermieter</div>
       </div>
       </body></html>`);
-    win.document.close();
-    setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
 
   return(
@@ -5379,8 +5389,6 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
   const zubehoer=vk.zubehoer||[];
 
   function drucken(){
-    const win=window.open("","_blank");
-    if(!win)return;
     const rabatt=parseFloat(vk.rabatt)||0;
     const fahrradBez=[vk.marke,vk.modell].filter(Boolean).join(" ")||"Fahrrad";
     const betreff=[vk.marke,vk.modell,vk.typ].filter(Boolean).join(" ");
@@ -5391,14 +5399,12 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
     const adrLines=(vk.strasse||vk.plz||vk.ort)
       ? [`${vk.strasse||""} ${vk.hausnummer||""}`.trim(),`${vk.plz||""} ${vk.ort||""}`.trim(),(vk.land&&vk.land!=="Deutschland"?vk.land:"")].filter(Boolean)
       : (vk.adresse||"").split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
-    win.document.write(rechnungDruckHTML({
+    druckeHTML(rechnungDruckHTML({
       nummer:vk.nummer, kundeNr:vk.kundeKdNr, datum:vk.erstellt||heute(),
       empfName:vk.kundeName, empfLines:adrLines, empfTel:vk.telefon, empfEmail:vk.email,
       betreff, items, gesamt:vk.gesamtpreis, zahlung:vk.zahlungsart,
       garantie:vk.garantie, garantieLabel:"ab Kaufdatum", isMobile
     }));
-    win.document.close();
-    setTimeout(()=>{try{win.print();}catch{win.focus();}},400);
   }
 
   return(
