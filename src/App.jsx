@@ -426,7 +426,7 @@ function genId(){return Math.random().toString(36).slice(2,10);}
 function getFirma(){
   try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{
     name:"HAS 17 GmbH",zusatz:"Drahtesel Plus",strasse:"Fehrbellinerstr. 17",plz:"10119",ort:"Berlin",
-    telefon:"030 / 246 37 912",mobil:"0176 / 234 88 885",email:"drahteselplus@google.com",
+    telefon:"030 / 54986284",mobil:"01631942687",email:"drahteselplus@google.com",
     web:"www.drahteselplus.de",steuerNr:"30/333/50218",ustId:"DE459175991",
     iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
     geschaeftsfuehrer:"Ömer COLAK",absenderEmail:"",mwstSatz:"19",kleinunternehmer:false,qrBasis:"",etikettFormat:"endlos"
@@ -434,6 +434,34 @@ function getFirma(){
 }
 function heute(){const d=new Date();return`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${d.getFullYear()}`;}
 function formatEuro(n){return(+n||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}
+// PDF baytlarını doğrudan yazdırır — PDF'te tarayıcı başlık/altbilgisi (tarih, başlık, URL) HİÇ olmaz.
+function druckePdfBytes(bytes){
+  var url=null;
+  try{
+    var blob=new Blob([bytes],{type:"application/pdf"});
+    url=URL.createObjectURL(blob);
+    var old=document.getElementById("dp-pdf-frame");
+    if(old&&old.parentNode)old.parentNode.removeChild(old);
+    var f=document.createElement("iframe");
+    f.id="dp-pdf-frame";
+    f.setAttribute("aria-hidden","true");
+    f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+    f.src=url;
+    document.body.appendChild(f);
+    var done=false;
+    function cleanup(){setTimeout(function(){try{if(f&&f.parentNode)f.parentNode.removeChild(f);}catch(e){}try{if(url)URL.revokeObjectURL(url);}catch(e){}},60000);}
+    function go(){
+      if(done)return;done=true;
+      try{f.contentWindow.focus();f.contentWindow.print();}
+      catch(e){try{window.open(url,"_blank");}catch(e2){}}
+      cleanup();
+    }
+    f.onload=function(){setTimeout(go,400);};
+    setTimeout(go,1800); // PDF iframe onload gecikirse yedek
+  }catch(err){
+    try{if(url)window.open(url,"_blank");}catch(e){}
+  }
+}
 // Mobil-uyumlu yazdırma: yeni pencere/sekme yerine gizli iframe (telefon/PWA'da takılmayı önler).
 function druckeHTML(html){
   try{
@@ -500,7 +528,7 @@ const DP_QR=(function(){
     M.fn[8][7]=true;M.fn[8][8]=true;M.fn[7][8]=true;
     for(var i=9;i<15;i++)M.fn[14-i][8]=true;
     for(var i=0;i<8;i++)M.fn[n-1-i][8]=true;
-    for(var i=8;i<15;i++)M.fn[8][n-15+i]=true;
+    for(var i=7;i<15;i++)M.fn[8][n-15+i]=true;
     M.m[n-8][8]=1;M.fn[n-8][8]=true;}
   function placeData(M,all){var n=M.n;var bits=[];for(var i=0;i<all.length;i++)for(var b=7;b>=0;b--)bits.push((all[i]>>b)&1);var idx=0;var up=true;for(var col=n-1;col>0;col-=2){if(col===6)col--;for(var t=0;t<n;t++){var row=up?(n-1-t):t;for(var k=0;k<2;k++){var c=col-k;if(!M.fn[row][c]){var bit=idx<bits.length?bits[idx]:0;M.m[row][c]=bit;idx++;}}}up=!up;}}
   function maskFn(k,i,j){switch(k){case 0:return (i+j)%2===0;case 1:return i%2===0;case 2:return j%3===0;case 3:return (i+j)%3===0;case 4:return (Math.floor(i/2)+Math.floor(j/3))%2===0;case 5:return ((i*j)%2)+((i*j)%3)===0;case 6:return (((i*j)%2)+((i*j)%3))%2===0;case 7:return (((i+j)%2)+((i*j)%3))%2===0;}}
@@ -508,12 +536,12 @@ const DP_QR=(function(){
   function fmtBits(ecBits2,mask){var data=(ecBits2<<3)|mask;
     // BCH(15,5)
     var g=0x537;var d=data<<10;var r=d;for(var i=14;i>=10;i--){if((r>>i)&1)r^=g<<(i-10);}var bch=(data<<10)|(r&0x3ff);return bch^0x5412;}
-  function placeFormat(M,mask){var n=M.n;var bits=fmtBits(0,mask);function gb(i){return (bits>>i)&1;}
+  function placeFormat(M,mask){var n=M.n;var bits=fmtBits(0,mask);function gb(i){return (bits>>(14-i))&1;}
     for(var i=0;i<=5;i++)M.m[8][i]=gb(i);
     M.m[8][7]=gb(6);M.m[8][8]=gb(7);M.m[7][8]=gb(8);
     for(var i=9;i<15;i++)M.m[14-i][8]=gb(i);
     for(var i=0;i<8;i++)M.m[n-1-i][8]=gb(i);
-    for(var i=8;i<15;i++)M.m[8][n-15+i]=gb(i);
+    for(var i=7;i<15;i++)M.m[8][n-15+i]=gb(i);
     M.m[n-8][8]=1;}
   function penalty(mat){var n=mat.length,p=0;
     for(var r=0;r<n;r++){var run=1;for(var c=1;c<n;c++){if(mat[r][c]===mat[r][c-1])run++;else{if(run>=5)p+=3+(run-5);run=1;}}if(run>=5)p+=3+(run-5);}
@@ -544,6 +572,189 @@ const DP_QR=(function(){
   function qrSvg(text,px,quiet){quiet=quiet==null?4:quiet;var q=qrMatrix(text);var n=q.size;var total=n+quiet*2;var cell=px/total;var r='<svg xmlns="http://www.w3.org/2000/svg" width="'+px+'" height="'+px+'" viewBox="0 0 '+total+' '+total+'" shape-rendering="crispEdges"><rect width="'+total+'" height="'+total+'" fill="#fff"/>';for(var y=0;y<n;y++)for(var x=0;x<n;x++){if(q.modules[y][x])r+='<rect x="'+(x+quiet)+'" y="'+(y+quiet)+'" width="1" height="1" fill="#000"/>';}r+='</svg>';return r;}
 return {qrMatrix:qrMatrix,qrSvg:qrSvg};
 })();
+// ── Gömülü PDF üreteci (A4 fatura, Helvetica/WinAnsi) — render ile doğrulandı ──
+const DP_PDF=(function(){
+// Helvetica genişlik tablosu (1/1000 em) — WinAnsi aralığı
+  var HW={};(function(){
+    var base={' ':278,'!':278,'"':355,'#':556,'$':556,'%':889,'&':667,"'":191,'(':333,')':333,'*':389,'+':584,',':278,'-':333,'.':278,'/':278,'0':556,'1':556,'2':556,'3':556,'4':556,'5':556,'6':556,'7':556,'8':556,'9':556,':':278,';':278,'<':584,'=':584,'>':584,'?':556,'@':1015,'A':667,'B':667,'C':722,'D':722,'E':667,'F':611,'G':778,'H':722,'I':278,'J':500,'K':667,'L':556,'M':833,'N':722,'O':778,'P':667,'Q':778,'R':722,'S':667,'T':611,'U':722,'V':667,'W':944,'X':667,'Y':667,'Z':611,'[':278,'\\':278,']':278,'^':469,'_':556,'`':333,'a':556,'b':556,'c':500,'d':556,'e':556,'f':278,'g':556,'h':556,'i':222,'j':222,'k':500,'l':222,'m':833,'n':556,'o':556,'p':556,'q':556,'r':333,'s':500,'t':278,'u':556,'v':500,'w':722,'x':500,'y':500,'z':500,'{':334,'|':260,'}':334,'~':584,
+      '€':556,'·':278,'–':556,'—':1000,'„':333,'“':333,'”':333,'ä':556,'ö':556,'ü':556,'Ä':667,'Ö':778,'Ü':722,'ß':556,'é':556,'§':556,'°':400};
+    HW=base;
+  })();
+  function strWidth(s,size){var w=0;for(var i=0;i<s.length;i++){var c=s[i];w+=(HW[c]!=null?HW[c]:556);}return w/1000*size;}
+  // Unicode → WinAnsi bayt
+  var WANSI={'€':0x80,'‚':0x82,'ƒ':0x83,'„':0x84,'…':0x85,'†':0x86,'‡':0x87,'ˆ':0x88,'‰':0x89,'Š':0x8A,'‹':0x8B,'Œ':0x8C,'‘':0x91,'’':0x92,'“':0x93,'”':0x94,'•':0x95,'–':0x96,'—':0x97,'˜':0x98,'™':0x99,'š':0x9A,'›':0x9B,'œ':0x9C,'Ÿ':0x9F,'·':0xB7,'°':0xB0,'§':0xA7};
+  function toWinAnsi(s){
+    var out="";
+    for(var i=0;i<s.length;i++){
+      var ch=s[i],cc=s.charCodeAt(i);
+      if(cc===0xA0){out+=" ";continue;} // NBSP → space
+      var b;
+      if(cc<128)b=cc;
+      else if(WANSI[ch]!=null)b=WANSI[ch];
+      else if(cc>=0xA0&&cc<=0xFF)b=cc; // Latin-1 (ä,ö,ü,ß vb.)
+      else b=0x3F; // ?
+      // PDF literal string kaçışları
+      if(b===0x28||b===0x29||b===0x5C)out+="\\";
+      out+=String.fromCharCode(b);
+    }
+    return out;
+  }
+  function rechnungPdfBytes(o){
+    var f=(typeof getFirma==='function')?getFirma():{};
+    var gesamt=parseFloat(o.gesamt)||0;
+    var klein=!!f.kleinunternehmer;
+    var satz=(typeof firmaMwstSatz==='function')?firmaMwstSatz():19;
+    var netto=klein?gesamt:(gesamt/(1+satz/100));
+    var mwst=gesamt-netto;
+    var euro=function(n){return (typeof formatEuro==='function')?formatEuro(n):((+n||0).toFixed(2)+" EUR");};
+    var items=o.items||[];
+    // Sayfa ölçüleri
+    var PW=595.28,PH=841.89,M=48;
+    var C=[]; // content commands
+    function esc(s){return toWinAnsi(String(s==null?"":s));}
+    function text(x,y,s,size,bold){C.push("BT /"+(bold?"F2":"F1")+" "+size+" Tf "+x.toFixed(2)+" "+(PH-y).toFixed(2)+" Td ("+esc(s)+") Tj ET");}
+    function textR(xr,y,s,size,bold){var w=strWidth(String(s==null?"":s),size);text(xr-w,y,s,size,bold);}
+    function line(x1,y1,x2,y2,lw){C.push((lw||0.7).toFixed(2)+" w "+x1.toFixed(2)+" "+(PH-y1).toFixed(2)+" m "+x2.toFixed(2)+" "+(PH-y2).toFixed(2)+" l S");}
+    function gray(g){C.push(g.toFixed(2)+" g");}
+    var y=M;
+    // ── Başlık ──
+    gray(0.1);
+    text(M,y+4,(f.name||"")+(f.zusatz?" - "+f.zusatz:""),12,true);
+    gray(0.35);
+    text(M,y+18,"Ihr Servicepartner für Fahrräder",9);
+    // Sağ: firma iletişim
+    var rx=PW-M;
+    textR(rx,y+2,f.name||"",10,true);
+    textR(rx,y+15,(f.strasse||""),9);
+    textR(rx,y+27,(f.plz||"")+" "+(f.ort||""),9);
+    if(f.telefon)textR(rx,y+39,"Tel: "+f.telefon,9);
+    if(f.email)textR(rx,y+51,f.email,9);
+    y+=78;
+    // Alıcı
+    gray(0.1);
+    text(M,y,o.empfName||"",11,true);
+    var ey=y+14;(o.empfLines||[]).forEach(function(l){if(l){text(M,ey,l,10);ey+=12;}});
+    if(o.empfTel){text(M,ey,"Tel: "+o.empfTel,10);ey+=12;}
+    // Başlık "Rechnung" + meta (sağ hizalı bloktan bağımsız, sol)
+    var ty=y+2;
+    textR(rx,ty,"RECHNUNG",20,true);
+    var meta="Rechnung Nr. "+(o.nummer||"");
+    if(o.kundeNr)meta+="    Kunde Nr. "+o.kundeNr;
+    meta+="    Datum: "+(o.datum||"");
+    textR(rx,ty+18,meta,9);
+    y=Math.max(ey,ty+40)+10;
+    // Betreff
+    if(o.betreff){gray(0.1);text(M,y,o.betreff,11,true);y+=18;}
+    // ── Tablo ──
+    var colPos=M, colBes=M+42, colEin=PW-M-210, colAnz=PW-M-120, colGes=PW-M;
+    gray(0.1);
+    line(M,y,PW-M,y,1.2);
+    y+=13;
+    text(colPos,y,"Pos",9,true);
+    text(colBes,y,"Beschreibung",9,true);
+    textR(colEin,y,"Einzelpreis",9,true);
+    textR(colAnz,y,"Anzahl",9,true);
+    textR(colGes,y,"Gesamtpreis",9,true);
+    y+=6;line(M,y,PW-M,y,1.2);y+=15;
+    items.forEach(function(it,i){
+      var m=(it.menge==null?1:it.menge);
+      text(colPos,y,String(i+1),9);
+      text(colBes,y,String(it.bez||""),9);
+      textR(colEin,y,euro(it.ep||0),9);
+      textR(colAnz,y,m+" Stück",9);
+      textR(colGes,y,euro((it.ep||0)*m),9);
+      y+=5;gray(0.85);line(M,y,PW-M,y,0.5);gray(0.1);y+=14;
+    });
+    // ── Toplamlar (sağ) ──
+    y+=6;
+    var lx=PW-M-200, vx=PW-M;
+    if(!klein){
+      text(lx,y,"Nettobetrag:",10);textR(vx,y,euro(netto),10);y+=15;
+      text(lx,y,"zzgl. "+satz+"% MwSt.:",10);textR(vx,y,euro(mwst),10);y+=8;
+    }
+    line(lx,y,vx,y,1.2);y+=14;
+    text(lx,y,"Gesamtbetrag:",12,true);textR(vx,y,euro(gesamt),12,true);
+    y+=24;
+    gray(0.2);
+    if(klein){text(M,y,"Gemäß § 19 UStG wird keine Umsatzsteuer berechnet und ausgewiesen.",9);y+=14;}
+    var vadeli=/rechnung|überweisung|ueberweisung/i.test(o.zahlung||"");
+    if(vadeli)text(M,y,"Bitte überweisen Sie den Gesamtbetrag auf das unten genannte Konto.",10);
+    else text(M,y,"Der Gesamtbetrag wurde mit "+(o.zahlung||"Bar")+" bezahlt.",10);
+    y+=14;
+    text(M,y,"Leistungs-/Lieferdatum ist der "+(o.datum||"")+".",10);y+=14;
+    if(o.garantie&&o.garantie!=="0"){text(M,y,"Garantie: "+o.garantie+" Monate "+(o.garantieLabel||"ab Kaufdatum")+".",10);y+=14;}
+    // ── Footer ──
+    var fy=PH-M-54;
+    gray(0.6);line(M,fy-10,PW-M,fy-10,0.6);
+    gray(0.35);
+    text(M,fy,f.name||"",8,true);
+    text(M,fy+10,(f.strasse||"")+" · "+(f.plz||"")+" "+(f.ort||""),8);
+    text(M,fy+20,"USt-IdNr: "+(f.ustId||"")+" · Steuernummer: "+(f.steuerNr||""),8);
+    text(M,fy+30,"Geschäftsführer: "+(f.geschaeftsfuehrer||""),8);
+    textR(rx,fy,f.bank||"",8,true);
+    textR(rx,fy+10,"IBAN: "+(f.iban||""),8);
+    textR(rx,fy+20,"BIC: "+(f.bic||""),8);
+    // ── PDF objeleri ──
+    var content=C.join("\n");
+    var objs=[];
+    objs[1]="<< /Type /Catalog /Pages 2 0 R >>";
+    objs[2]="<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+    objs[3]="<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "+PW+" "+PH+"] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>";
+    objs[4]="<< /Length "+content.length+" >>\nstream\n"+content+"\nendstream";
+    objs[5]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+    objs[6]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+    var pdf="%PDF-1.4\n%âãÏÓ\n";
+    var offsets=[];
+    for(var i=1;i<objs.length;i++){offsets[i]=pdf.length;pdf+=i+" 0 obj\n"+objs[i]+"\nendobj\n";}
+    var xref=pdf.length;
+    pdf+="xref\n0 "+objs.length+"\n0000000000 65535 f \n";
+    for(var i=1;i<objs.length;i++){pdf+=("0000000000"+offsets[i]).slice(-10)+" 00000 n \n";}
+    pdf+="trailer\n<< /Size "+objs.length+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
+    // String(char=byte) → Uint8Array
+    var bytes=new Uint8Array(pdf.length);
+    for(var i=0;i<pdf.length;i++)bytes[i]=pdf.charCodeAt(i)&0xFF;
+    return bytes;
+  }
+return {bytes:rechnungPdfBytes};
+})();
+
+// Faturayı PDF olarak WhatsApp ile paylaşır: önce yerel paylaş (dosya ekler), olmazsa Storage'a yükle + link, son çare indir.
+async function rechnungPdfTeilen(opts, cfg){
+  cfg=cfg||{};
+  var phone=(cfg.phone||"").replace(/\D/g,"");
+  var nachricht=cfg.nachricht||"";
+  var dateiname=cfg.dateiname||("Rechnung-"+(opts.nummer||"")+".pdf");
+  var waBase=phone?("https://wa.me/"+phone+"?text="):"https://wa.me/?text=";
+  try{
+    var bytes=DP_PDF.bytes(opts);
+    var blob=new Blob([bytes],{type:"application/pdf"});
+    var file=null;
+    try{file=new File([blob],dateiname,{type:"application/pdf"});}catch(e){}
+    // 1) Yerel paylaş — telefonda WhatsApp'a dosya olarak ekler
+    if(file&&navigator.canShare&&navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:dateiname,text:nachricht}); return {ok:true,via:"share"}; }
+      catch(e){ if(e&&e.name==="AbortError")return {ok:true,via:"abort"}; }
+    }
+    // 2) Storage'a yükle + wa.me linki
+    try{
+      var path="rechnungen/"+(opts.nummer||genId())+"_"+Date.now()+".pdf";
+      var up=await fetch(SUPA_URL+"/storage/v1/object/fotos/"+path,{method:"POST",headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+(_authToken||SUPA_KEY),"Content-Type":"application/pdf"},body:blob});
+      if(up.ok){
+        var url=SUPA_URL+"/storage/v1/object/public/fotos/"+path;
+        var txt=(nachricht?nachricht+"\n\n":"")+"Ihre Rechnung (PDF): "+url;
+        window.open(waBase+encodeURIComponent(txt),"_blank");
+        return {ok:true,via:"link",url:url};
+      }
+    }catch(e){}
+    // 3) Son çare: PDF indir + wa.me metin (kullanıcı manuel ekler)
+    try{
+      var dl=URL.createObjectURL(blob);var a=document.createElement("a");a.href=dl;a.download=dateiname;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(dl);},4000);
+    }catch(e){}
+    window.open(waBase+encodeURIComponent(nachricht),"_blank");
+    return {ok:true,via:"download"};
+  }catch(e){ return {ok:false,error:(e&&e.message)||"Fehler"}; }
+}
+
 
 
 function parseDatum(str){
@@ -677,7 +888,8 @@ function rechnungDruckHTML(o){
         .seite{font-size:10px;color:#888;margin-bottom:10px;}
         .footcols{display:flex;justify-content:space-between;gap:24px;font-size:10px;color:#555;line-height:1.5;}
         .footcols b{color:#222;}
-        @media print{body{padding:24px;}}
+        @page{size:A4;margin:0;}
+        @media print{body{padding:14mm;}}
       </style></head><body>
       <div class="head">
         <div>
@@ -2043,7 +2255,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
   function drucken(){
     if(!printRef.current)return;
     druckeHTML(`<html><head><title>Arbeitsauftrag #${auftrag.nummer}</title>
-    <style>body{font-family:sans-serif;margin:0;padding:32px;font-size:13px;color:#111;}
+    <style>@page{size:A4;margin:0;} @media print{body{padding:14mm;}}
+    body{font-family:sans-serif;margin:0;padding:32px;font-size:13px;color:#111;}
     table{width:100%;border-collapse:collapse;}th,td{padding:7px 10px;text-align:left;border-bottom:1px solid #eee;}
     th{background:#f5f5f5;font-weight:600;font-size:11px;}
     .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;}
@@ -2092,7 +2305,8 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       .tag .big{font-size:30px;font-weight:800;letter-spacing:1px;line-height:1;}
       .tag .qr2{width:28mm;height:28mm;} .tag .qr2 svg{width:28mm;height:28mm;display:block;}
       .hole{width:9mm;height:9mm;border:2px solid #111;border-radius:50%;margin-bottom:6px;}
-      @media print{body{padding:10mm;}}
+      @page{size:A4;margin:0;}
+      @media print{body{padding:12mm;}}
     </style></head><body>
       <!-- KUNDENBELEG -->
       <div class="head">
@@ -2135,7 +2349,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           <div class="hole"></div>
           <div style="display:flex;align-items:center;gap:6px;">${LOGO_SRC?`<img src="${LOGO_SRC}" style="width:9mm;height:9mm;object-fit:contain;"/>`:""}<span style="font-size:11px;color:#666;font-weight:600;">${f.zusatz||f.name||"Drahtesel Plus"}</span></div>
           <div class="big">#${auftrag.nummer}</div>
-          <div style="margin-top:6px;font-size:13px;font-weight:600;">${kunde.nachname||kundeName}${kunde.telefon?` · 📞 ${kunde.telefon}`:""}</div>
+          ${kunde.vorname?`<div style="margin-top:6px;font-size:13px;font-weight:600;">${kunde.vorname}</div>`:""}
           <div style="font-size:12px;color:#333;">${bike||auftrag.fahrradModell||""}</div>
           ${auftrag.fahrradNr?`<div style="font-size:11px;color:#666;">Rahmen-Nr.: ${auftrag.fahrradNr}</div>`:""}
           <div style="font-size:11px;color:#666;margin-top:4px;">Annahme: ${auftrag.annahmeDatum||auftrag.erstellt||heute()}${auftrag.voraussichtlichFertig?` · Fertig: ${auftrag.voraussichtlichFertig}`:""}</div>
@@ -2151,7 +2365,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
     const pageSize=fmt==="62x100"?"62mm 100mm":fmt==="62x29"?"62mm 29mm":"62mm auto";
     const qr=auftragQrSvg(fmt==="62x29"?200:260);
     const bike=[auftrag.fahrradModell,auftrag.fahrradFarbe].filter(Boolean).join(" · ");
-    const name=`${kunde.nachname||""} ${kunde.vorname||""}`.trim();
+    const name=(kunde.vorname||"").trim();
     let bodyHtml;
     if(fmt==="62x29"){
       bodyHtml=`<div class="mini"><div class="ml"><div class="mnr">#${auftrag.nummer}</div><div class="mnm">${name}</div><div class="mbk">${bike||auftrag.fahrradModell||""}</div></div><div class="mq">${qr}</div></div>`;
@@ -2160,8 +2374,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
       <div class="shop">${f.zusatz||f.name||"Drahtesel Plus"}</div>
       <div class="nr">#${auftrag.nummer}</div>
       <div class="qr">${qr}</div>
-      <div class="row b">${name}</div>
-      ${kunde.telefon?`<div class="row">📞 ${kunde.telefon}</div>`:""}
+      ${name?`<div class="row b">${name}</div>`:""}
       <div class="row">${bike||auftrag.fahrradModell||""}</div>
       ${auftrag.fahrradNr?`<div class="row">Rahmen: ${auftrag.fahrradNr}</div>`:""}
       <div class="small">Annahme: ${auftrag.annahmeDatum||auftrag.erstellt||heute()}${auftrag.voraussichtlichFertig?` · Fertig: ${auftrag.voraussichtlichFertig}`:""}</div>`;
@@ -3301,15 +3514,26 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   const printRef=useRef();const k=kunde||{};
   const [editModus,setEditModus]=useState(false);
   const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
-  function drucken(){
+  function rechnungOpts(){
     const items=(rechnung.positionen||[]).map(p=>({bez:p.beschreibung,ep:parseFloat(p.einzelpreis)||0,menge:(p.menge==null?1:p.menge)}));
     const empfLines=[`${k.strasse||""} ${k.hausnr||""}`.trim(),`${k.plz||""} ${k.ort||""}`.trim(),k.land||"Deutschland"];
-    druckeHTML(rechnungDruckHTML({
+    return {
       nummer:rechnung.nummer, kundeNr:rechnung.kundeKdNr||k.kdNr, datum:rechnung.erstellt,
       empfName:`${k.vorname||""} ${k.nachname||""}`.trim(), empfLines,
       empfTel:k.telefon, empfEmail:k.email,
       betreff:rechnung.fahrradModell, items, gesamt:rechnung.brutto, zahlung:rechnung.bezahlung
-    }));
+    };
+  }
+  function drucken(){ try{ druckePdfBytes(DP_PDF.bytes(rechnungOpts())); }catch(e){ druckeHTML(rechnungDruckHTML(rechnungOpts())); } }
+  async function whatsappSenden(){
+    const firma=getFirma();
+    const msg=`Hallo ${k.vorname||""}! Anbei Ihre Rechnung Nr. ${rechnung.nummer} über ${formatEuro(rechnung.brutto||0)}. Vielen Dank für Ihr Vertrauen! – ${firma.zusatz||firma.name||"Drahtesel Plus"}`;
+    if(showToast)showToast("Rechnung wird als PDF vorbereitet…");
+    const res=await rechnungPdfTeilen(rechnungOpts(),{phone:k.whatsapp||k.telefon,nachricht:msg,dateiname:`Rechnung-${rechnung.nummer}.pdf`});
+    if(res&&res.ok){
+      if(res.via==="link"&&showToast)showToast("PDF hochgeladen – WhatsApp wird geöffnet ✓");
+      else if(res.via==="download"&&showToast)showToast("PDF heruntergeladen – bitte in WhatsApp anhängen");
+    }else if(showToast)showToast("Fehler: "+((res&&res.error)||"-"),"err");
   }
   return(
     <div style={{maxWidth:"100%"}}>
@@ -3318,8 +3542,8 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
         <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={drucken} style={btnPrimary}>🖨️ Drucken / PDF</button>
           {k.email&&<a href={`mailto:${k.email}?subject=Rechnung%20Nr.%20${rechnung.nummer}%20-%20Drahtesel%20Plus`} style={{...btnSecondary,textDecoration:"none",fontSize:13}}>📧 E-Mail</a>}
-          {k.whatsapp&&<a href={`https://wa.me/${(k.whatsapp||"").replace(/\D/g,"")}?text=Hallo%20${k.vorname}!%20Ihre%20Rechnung%20Nr.%20${rechnung.nummer}%20über%20${formatEuro(rechnung.brutto||0)}%20-%20Drahtesel%20Plus`}
-            target="_blank" rel="noopener noreferrer" style={{...btnSecondary,textDecoration:"none",fontSize:13,color:"#25D366",borderColor:"#25D366"}}>💬 WhatsApp</a>}
+          {(k.whatsapp||k.telefon)&&<button onClick={whatsappSenden}
+            style={{...btnSecondary,fontSize:13,color:"#25D366",borderColor:"#25D366"}}>💬 WhatsApp (PDF)</button>}
           <button onClick={()=>setEditModus(p=>!p)} style={{...btnSecondary,color:editModus?COLORS.accent:COLORS.muted,borderColor:editModus?COLORS.accent:COLORS.border,fontSize:13}}>✏️ Düzenle</button>
           <button onClick={()=>showConfirm("Rechnung wirklich löschen? Dies kann nicht rückgängig gemacht werden.",()=>onLoeschen(rechnung.id),{icon:"🧾",okLabel:"Löschen"})} style={{...btnSecondary,color:COLORS.red,borderColor:COLORS.red,fontSize:13}}>🗑️ Sil</button>
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
@@ -3583,7 +3807,7 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
   const [firma,setFirma]=useState(()=>{
     try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{
       name:"HAS 17 GmbH",zusatz:"Drahtesel Plus",strasse:"Fehrbellinerstr. 17",plz:"10119",ort:"Berlin",
-      land:"Deutschland",telefon:"030 / 246 37 912",mobil:"0176 / 234 88 885",
+      land:"Deutschland",telefon:"030 / 54986284",mobil:"01631942687",
       email:"drahteselplus@google.com",web:"www.drahteselplus.de",
       steuerNr:"30/333/50218",ustId:"DE459175991",
       iban:"DE02 1005 0000 0191 565997",bic:"BELADEBEXXX",bank:"Berliner Sparkasse",
@@ -4747,6 +4971,7 @@ function VermietungDetail({vermietung,firma,isMobile,showConfirm,onStatus,onSil,
       </div>`).join("");
     druckeHTML(`<html><head><title>Mietvertrag ${v.nummer}</title>
       <style>
+        @page{size:A4;margin:0;} @media print{body{padding:14mm;}}
         body{font-family:sans-serif;color:#111;padding:${isMobile?16:36}px;line-height:1.5;font-size:13px;}
         h1{color:#1a56a0;font-size:22px;margin-bottom:2px;}
         .sub{color:#666;font-size:12px;margin-bottom:20px;}
@@ -5059,7 +5284,7 @@ function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm
     onAbbruch={()=>setAnsicht("liste")}/>;
 
   if(ansicht==="detail"&&selVk) return <VerkaufDetail
-    verkauf={selVk} firma={firma} isMobile={isMobile} showConfirm={showConfirm}
+    verkauf={selVk} firma={firma} isMobile={isMobile} showConfirm={showConfirm} showToast={showToast}
     onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
@@ -5383,12 +5608,12 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
   );
 }
 
-function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
+function VerkaufDetail({verkauf,firma,isMobile,showConfirm,showToast,onSil,onAbbruch}){
   const printRef=useRef();
   const vk=verkauf;
   const zubehoer=vk.zubehoer||[];
 
-  function drucken(){
+  function rechnungOpts(){
     const rabatt=parseFloat(vk.rabatt)||0;
     const fahrradBez=[vk.marke,vk.modell].filter(Boolean).join(" ")||"Fahrrad";
     const betreff=[vk.marke,vk.modell,vk.typ].filter(Boolean).join(" ");
@@ -5399,12 +5624,23 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
     const adrLines=(vk.strasse||vk.plz||vk.ort)
       ? [`${vk.strasse||""} ${vk.hausnummer||""}`.trim(),`${vk.plz||""} ${vk.ort||""}`.trim(),(vk.land&&vk.land!=="Deutschland"?vk.land:"")].filter(Boolean)
       : (vk.adresse||"").split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
-    druckeHTML(rechnungDruckHTML({
+    return {
       nummer:vk.nummer, kundeNr:vk.kundeKdNr, datum:vk.erstellt||heute(),
       empfName:vk.kundeName, empfLines:adrLines, empfTel:vk.telefon, empfEmail:vk.email,
       betreff, items, gesamt:vk.gesamtpreis, zahlung:vk.zahlungsart,
       garantie:vk.garantie, garantieLabel:"ab Kaufdatum", isMobile
-    }));
+    };
+  }
+  function drucken(){ try{ druckePdfBytes(DP_PDF.bytes(rechnungOpts())); }catch(e){ druckeHTML(rechnungDruckHTML(rechnungOpts())); } }
+  async function whatsappSenden(){
+    const f=getFirma();
+    const msg=`Hallo ${vk.vorname||vk.kundeName||""}! Anbei Ihre Rechnung Nr. ${vk.nummer} über ${formatEuro(vk.gesamtpreis||0)}. Vielen Dank für Ihren Einkauf! – ${f.zusatz||f.name||"Drahtesel Plus"}`;
+    if(showToast)showToast("Rechnung wird als PDF vorbereitet…");
+    const res=await rechnungPdfTeilen(rechnungOpts(),{phone:vk.telefon,nachricht:msg,dateiname:`Rechnung-${vk.nummer}.pdf`});
+    if(res&&res.ok){
+      if(res.via==="link"&&showToast)showToast("PDF hochgeladen – WhatsApp wird geöffnet ✓");
+      else if(res.via==="download"&&showToast)showToast("PDF heruntergeladen – bitte in WhatsApp anhängen");
+    }else if(showToast)showToast("Fehler: "+((res&&res.error)||"-"),"err");
   }
 
   return(
@@ -5414,7 +5650,10 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,onSil,onAbbruch}){
           <button onClick={onAbbruch} style={btnSecondary}>← Zurück</button>
           <h2 style={{fontSize:20,fontWeight:700}}>Verkauf #{vk.nummer}</h2>
         </div>
-        <button onClick={drucken} style={btnPrimary}>🖨️ Rechnung drucken</button>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {vk.telefon&&<button onClick={whatsappSenden} style={{...btnSecondary,color:"#25D366",borderColor:"#25D366"}}>💬 WhatsApp (PDF)</button>}
+          <button onClick={drucken} style={btnPrimary}>🖨️ Rechnung drucken</button>
+        </div>
       </div>
 
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
