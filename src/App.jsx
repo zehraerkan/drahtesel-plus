@@ -3527,7 +3527,8 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   function drucken(){ try{ druckePdfBytes(DP_PDF.bytes(rechnungOpts())); }catch(e){ druckeHTML(rechnungDruckHTML(rechnungOpts())); } }
   async function whatsappSenden(){
     const firma=getFirma();
-    const msg=`Hallo ${k.vorname||""}! Anbei Ihre Rechnung Nr. ${rechnung.nummer} über ${formatEuro(rechnung.brutto||0)}. Vielen Dank für Ihr Vertrauen! – ${firma.zusatz||firma.name||"Drahtesel Plus"}`;
+    const gruss=k.vorname?`Hallo ${k.vorname},`:"Hallo,";
+    const msg=`${gruss}\n\nvielen Dank für Ihr Vertrauen! 🚲 Ihr Rad ist wieder fahrbereit – Ihre Rechnung Nr. ${rechnung.nummer} haben wir Ihnen als PDF angehängt.\n\nAllzeit gute Fahrt und bis zur nächsten Runde!\n\nHerzliche Grüße\n${firma.zusatz||firma.name||"Drahtesel Plus"}`;
     if(showToast)showToast("Rechnung wird als PDF vorbereitet…");
     const res=await rechnungPdfTeilen(rechnungOpts(),{phone:k.whatsapp||k.telefon,nachricht:msg,dateiname:`Rechnung-${rechnung.nummer}.pdf`});
     if(res&&res.ok){
@@ -5634,7 +5635,8 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,showToast,onSil,onAbb
   function drucken(){ try{ druckePdfBytes(DP_PDF.bytes(rechnungOpts())); }catch(e){ druckeHTML(rechnungDruckHTML(rechnungOpts())); } }
   async function whatsappSenden(){
     const f=getFirma();
-    const msg=`Hallo ${vk.vorname||vk.kundeName||""}! Anbei Ihre Rechnung Nr. ${vk.nummer} über ${formatEuro(vk.gesamtpreis||0)}. Vielen Dank für Ihren Einkauf! – ${f.zusatz||f.name||"Drahtesel Plus"}`;
+    const gruss=(vk.vorname||vk.kundeName)?`Hallo ${vk.vorname||vk.kundeName},`:"Hallo,";
+    const msg=`${gruss}\n\nherzlichen Dank für Ihren Einkauf bei ${f.zusatz||f.name||"Drahtesel Plus"}! 🚲 Ihre Rechnung Nr. ${vk.nummer} haben wir Ihnen als PDF angehängt.\n\nWir wünschen Ihnen allzeit gute Fahrt und viel Freude – bis bald!\n\nHerzliche Grüße\n${f.zusatz||f.name||"Drahtesel Plus"}`;
     if(showToast)showToast("Rechnung wird als PDF vorbereitet…");
     const res=await rechnungPdfTeilen(rechnungOpts(),{phone:vk.telefon,nachricht:msg,dateiname:`Rechnung-${vk.nummer}.pdf`});
     if(res&&res.ok){
