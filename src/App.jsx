@@ -1131,6 +1131,13 @@ export default function DrahteselApp() {
     else{next=hasMin?m:(start+1);}
     return String(next).padStart(4,"0");
   }
+  // ── Ortak Rechnungsnummer: servis (rechnungen) + satış (verkaeufe) tek dizi ──
+  function naechsteBelegNr(){
+    const maxR=rechnungen.reduce((m,x)=>Math.max(m,parseInt(x.nummer)||0),0);
+    const maxV=verkaeufe.reduce((m,x)=>Math.max(m,parseInt(x.nummer)||0),0);
+    const minN=parseInt(getFirma().startRechnung)||0;
+    return String(Math.max(maxR+1,maxV+1,minN)).padStart(4,"0");
+  }
 
   // ── CRUD fonksiyonları ──────────────────────────────────────────────────────
   async function kundeHinzufuegen(k) {
@@ -1138,7 +1145,8 @@ export default function DrahteselApp() {
     // State'teki kunden listesinden maxNr hesapla — ayrı DB çağrısı gereksiz
     const maxNr=kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0);
     const minK=parseInt(getFirma().startKunde)||0;
-    const kdNr=String(Math.max(maxNr+1,minK)).padStart(4,"0");
+    const vorgabe=String(k.kdNr||"").trim();
+    const kdNr=vorgabe?vorgabe.padStart(4,"0"):String(Math.max(maxNr+1,minK)).padStart(4,"0");
     const neu={...k,id,kdNr,erstellt};
     await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
     setKunden(p=>[neu,...p]); return neu;
@@ -1335,32 +1343,23 @@ export default function DrahteselApp() {
 
   async function verkaufHinzufuegen(vk) {
     const id=genId(); const erstellt=heute();
-    let nummer=null;
-    try{
-      const r=await fetchWithAuth(`${SUPA_URL}/rest/v1/rpc/naechste_verkauf_nr`,{
-        method:"POST",headers:getHeaders(),body:"{}"
-      });
-      if(r.ok){const val=await r.json();if(val)nummer=String(val).replace(/"/g,"");}
-    }catch{}
-    if(!nummer){
-      const maxNr=verkaeufe.reduce((m,x)=>Math.max(m,parseInt(x.nummer)||0),0);
-      nummer=String(maxNr+1).padStart(4,"0");
-    }
+    // Ortak Rechnungsnummer dizisi (servis + satış tek sıra)
+    const nummer=String(vk.nummer||"").trim()||naechsteBelegNr();
     const status="Abgeschlossen";
     // ── Stammkunde kontrolü: müşteri kayıtlı değilse hemen Stammkunde olarak ekle ──
-    let kundeId=vk.kundeId||null, kundeKdNr=vk.kundeKdNr||null;
-    if(!kundeKdNr){
+    let kundeId=vk.kundeId||null, kundeKdNr=String(vk.kundeKdNr||"").trim()||null;
+    if(!kundeId){
       const nameKey=(vk.kundeName||"").trim().toLowerCase();
       const telKey=(vk.telefon||"").replace(/\D/g,"");
       const match=kunden.find(k=>`${k.vorname||""} ${k.nachname||""}`.trim().toLowerCase()===nameKey&&(telKey?(k.telefon||"").replace(/\D/g,"")===telKey:true));
-      if(match){kundeId=match.id;kundeKdNr=match.kdNr;}
+      if(match){kundeId=match.id;kundeKdNr=kundeKdNr||match.kdNr;}
       else if(nameKey){
         try{
           let strasse=vk.strasse||"",hausnummer=vk.hausnummer||"",plz=vk.plz||"",ort=vk.ort||"";
           if(!strasse&&!plz&&!ort){const pa=parseAdresseDE(vk.adresse);strasse=pa.strasse;plz=pa.plz;ort=pa.ort;}
           let vorname=vk.vorname||"",nachname=vk.nachname||"";
           if(!vorname&&!nachname){const parts=(vk.kundeName||"").trim().split(/\s+/);nachname=parts.length>1?parts[parts.length-1]:(parts[0]||"");vorname=parts.length>1?parts.slice(0,-1).join(" "):"";}
-          const neuerK=await kundeHinzufuegen({vorname,nachname,telefon:vk.telefon||"",whatsapp:vk.telefon||"",email:vk.email||"",strasse,hausnummer,plz,ort,land:vk.land||"Deutschland",notiz:"Automatisch aus Verkauf angelegt",quelle:"Verkauf"});
+          const neuerK=await kundeHinzufuegen({vorname,nachname,telefon:vk.telefon||"",whatsapp:vk.telefon||"",email:vk.email||"",strasse,hausnummer,plz,ort,land:vk.land||"Deutschland",notiz:"Automatisch aus Verkauf angelegt",quelle:"Verkauf",kdNr:kundeKdNr||undefined});
           kundeId=neuerK.id;kundeKdNr=neuerK.kdNr;
         }catch(e){/* müşteri eklenemezse satış yine de kaydedilir */}
       }
@@ -1606,7 +1605,7 @@ export default function DrahteselApp() {
           auftrag={selAuftrag}
           isMobile={isMobile}
           kunde={kunden.find(k=>k.id===selAuftrag.kundeId)||{}}
-          rechnungNrVorschlag={naechsteNr(rechnungen,"nummer",1,getFirma().startRechnung)}
+          rechnungNrVorschlag={naechsteBelegNr()}
           onLoeschen={async(id)=>{try{await auftragLoeschen(id);setAuftraege(p=>p.filter(x=>x.id!==id));setScreen("auftraege");showToast("Auftrag gelöscht.");}catch(e){showToast("Fehler beim Löschen: "+e.message,"err");}}}
           onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);setAuftraege(p=>p.map(x=>x.id===a.id?{...x,...a}:x));showToast("Gespeichert!");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           onStatusChange={async(id,st)=>{try{await auftragStatusAendern(id,st);showToast(`Status: ${st}`);}catch(e){showToast("Fehler","err");}}}
@@ -1614,7 +1613,7 @@ export default function DrahteselApp() {
           onRechnungErstellen={async(a,_zahlart,abgeholt=false)=>{
             try{
               const k=kunden.find(x=>x.id===a.kundeId)||{};
-              const nr=String(a.rechnungNr||"").trim()||naechsteNr(rechnungen,"nummer",1);
+              const nr=String(a.rechnungNr||"").trim()||naechsteBelegNr();
               const kdNr=String(a.kundenNr||"").trim()||k.kdNr;
               // Kundennummer elle değiştirildiyse müşteri kaydını da güncelle (ileride de tutarlı kalsın)
               if(k.id&&kdNr&&kdNr!==k.kdNr){try{await kundeAktualisieren({...k,kdNr});}catch(e){}}
@@ -1631,7 +1630,7 @@ export default function DrahteselApp() {
           onKundeDetail={selKunde?()=>{setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${selAuftrag?.nummer}`},{screen:"kunde-detail",label:`${selKunde.nachname}`}]);setScreen("kunde-detail");}:null}
           showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="rechnungen"&&<AlleRechnungen rechnungen={rechnungen} kunden={kunden}
-          naechsteRechnungNr={naechsteNr(rechnungen,"nummer",1,getFirma().startRechnung)}
+          naechsteRechnungNr={naechsteBelegNr()}
           naechsteKundenNr={String(Math.max(kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0)+1,parseInt(getFirma().startKunde)||0)).padStart(4,"0")}
           onDetail={(r,k)=>{setSelRechnung(r);setSelKunde(k);setScreen("rechnung-detail");}}/>}
         {screen==="rechnung-detail"&&selRechnung&&<RechnungDetail
@@ -1713,6 +1712,7 @@ export default function DrahteselApp() {
           isMobile={isMobile}
           showToast={showToast}
           showConfirm={showConfirm}
+          belegNrVorschlag={naechsteBelegNr()}
           firma={(()=>{try{return JSON.parse(localStorage.getItem("dp_firma")||"null")||{};}catch{return{};}})()}
           onEkle={async(vk)=>{try{const neu=await verkaufHinzufuegen(vk);showToast("Verkauf gespeichert!");return neu;}catch(err){showToast("Hata: "+err.message,"err");throw err;}}}
           onGuncelle={async(vk)=>{try{await verkaufAktualisieren(vk);showToast("Gespeichert!");}catch(err){showToast("Hata: "+err.message,"err");}}}
@@ -3913,10 +3913,10 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
     <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
       <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:10}}>🔢 NUMMERNKREISE</div>
       <div style={{color:COLORS.muted,fontSize:13,marginBottom:16,lineHeight:1.5}}>
-        Nächste Nummer, ab der das System weiterzählt – so stimmen die Nummern mit Ihrer Buchhaltung überein. Das System schlägt beim Erstellen immer <strong>mindestens</strong> diese Nummer vor und zählt danach automatisch hoch. Leer lassen = fortlaufend ab dem höchsten vorhandenen Wert.
+        Nächste Nummer, ab der das System weiterzählt – so stimmen die Nummern mit Ihrer Buchhaltung überein. Die Rechnungsnummer ist <strong>gemeinsam</strong> für Service-Rechnungen und Verkäufe (eine lückenlose Reihe, GoBD-konform). Das System schlägt beim Erstellen immer <strong>mindestens</strong> diese Nummer vor und zählt danach automatisch hoch. Leer lassen = fortlaufend ab dem höchsten vorhandenen Wert.
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div><label style={labelStyle}>Nächste Rechnungsnummer</label><input value={firma.startRechnung||""} onChange={e=>FF("startRechnung",e.target.value.replace(/\D/g,""))} placeholder="z. B. 0041" inputMode="numeric" style={inputStyle}/></div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+        <div><label style={labelStyle}>Nächste Rechnungsnummer (Service + Verkauf)</label><input value={firma.startRechnung||""} onChange={e=>FF("startRechnung",e.target.value.replace(/\D/g,""))} placeholder="z. B. 0041" inputMode="numeric" style={inputStyle}/></div>
         <div><label style={labelStyle}>Nächste Kundennummer</label><input value={firma.startKunde||""} onChange={e=>FF("startKunde",e.target.value.replace(/\D/g,""))} placeholder="z. B. 0120" inputMode="numeric" style={inputStyle}/></div>
       </div>
     </div>
@@ -5324,7 +5324,7 @@ const ZUBEHOER_VORLAGE = [
   {name:"Luftpumpe", preis:"12.90"},
 ];
 
-function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm,firma,onEkle,onGuncelle,onSil}){
+function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm,firma,onEkle,onGuncelle,onSil,belegNrVorschlag}){
   const [ansicht,setAnsicht]=useState("liste");
   const [selVk,setSelVk]=useState(null);
   const [suche,setSuche]=useState("");
@@ -5335,13 +5335,18 @@ function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm
       .filter(vk=>!suche||`${vk.nummer} ${vk.kundeName||""} ${vk.marke||""} ${vk.modell||""} ${vk.rahmennummer||""}`.toLowerCase().includes(suche.toLowerCase()));
   },[verkaeufe,suche]);
 
+  const naechsteVerkaufNr=belegNrVorschlag||String(Math.max(verkaeufe.reduce((m,x)=>Math.max(m,parseInt(x.nummer)||0),0)+1)).padStart(4,"0");
+  const naechsteKundenNr=String(Math.max(kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0)+1,parseInt(getFirma().startKunde)||0)).padStart(4,"0");
+
   if(ansicht==="neu") return <VerkaufForm
     kunden={kunden} envanter={envanter} isMobile={isMobile} showToast={showToast}
+    nummerVorschlag={naechsteVerkaufNr} kundenNrVorschlag={naechsteKundenNr}
     onSave={async(vk)=>{const neu=await onEkle(vk);setSelVk(neu);setAnsicht("detail");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
   if(ansicht==="detail"&&selVk) return <VerkaufDetail
     verkauf={selVk} firma={firma} isMobile={isMobile} showConfirm={showConfirm} showToast={showToast}
+    onGuncelle={async(u)=>{await onGuncelle(u);setSelVk(u);}}
     onSil={async(id)=>{await onSil(id);setAnsicht("liste");}}
     onAbbruch={()=>setAnsicht("liste")}/>;
 
@@ -5355,6 +5360,13 @@ function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm
           <div style={{color:COLORS.muted,fontSize:12,marginTop:2}}>{verkaeufe.length} Verkäufe · {formatEuro(gesamtUmsatz)} gesamt</div>
         </div>
         <button onClick={()=>setAnsicht("neu")} style={btnPrimary}>+ Neuer Verkauf</button>
+      </div>
+
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",background:`${COLORS.accent}11`,border:`1px solid ${COLORS.accent}33`,borderRadius:10,padding:"10px 16px",marginBottom:14,fontSize:13}}>
+        <span style={{color:COLORS.muted,fontWeight:600,letterSpacing:.3}}>NÄCHSTE NUMMER</span>
+        <span>Rechnung <strong style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent}}>{naechsteVerkaufNr}</strong></span>
+        <span>Kunde <strong style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent}}>{naechsteKundenNr}</strong></span>
+        <span style={{color:COLORS.muted,fontSize:11}}>· gemeinsame Nummer · nur zur Ansicht</span>
       </div>
 
       <div style={{position:"relative",marginBottom:16}}>
@@ -5395,12 +5407,13 @@ function VerkaufScreen({verkaeufe,kunden,envanter,isMobile,showToast,showConfirm
   );
 }
 
-function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
+function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch,nummerVorschlag,kundenNrVorschlag}){
   const [saving,setSaving]=useState(false);
   const [kundeSuche,setKundeSuche]=useState("");
   const [lagerSuche,setLagerSuche]=useState("");
   const [lagerOffen,setLagerOffen]=useState(false);
   const [form,setForm]=useState({
+    nummer: nummerVorschlag||"",
     vorname:"", nachname:"", telefon:"", email:"",
     strasse:"", hausnummer:"", plz:"", ort:"", land:"Deutschland",
     kundeId:"", kundeKdNr:"",
@@ -5482,6 +5495,16 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <h2 style={{fontSize:20,fontWeight:700}}>💰 Neuer Verkauf</h2>
         <button onClick={onAbbruch} style={btnSecondary}>✕</button>
+      </div>
+
+      {/* RECHNUNG / NUMMERN */}
+      <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+        <div style={{fontWeight:600,fontSize:12,color:COLORS.muted,letterSpacing:.5,marginBottom:12}}>🧾 RECHNUNG</div>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10}}>
+          <div><label style={labelStyle}>Rechnungsnummer</label><input value={form.nummer} onChange={e=>F("nummer",e.target.value.replace(/\D/g,""))} inputMode="numeric" style={inputStyle}/></div>
+          <div><label style={labelStyle}>Kundennummer</label><input value={form.kundeKdNr} onChange={e=>F("kundeKdNr",e.target.value.replace(/\D/g,""))} placeholder={`${kundenNrVorschlag||""} (automatisch)`} inputMode="numeric" style={inputStyle}/></div>
+        </div>
+        <div style={{fontSize:11,color:COLORS.muted,marginTop:8}}>Vorschlag automatisch – bei Bedarf an Ihre Buchhaltung anpassen. Kundennummer leer = automatisch vergeben.</div>
       </div>
 
       {/* KÄUFER */}
@@ -5665,10 +5688,13 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch}){
   );
 }
 
-function VerkaufDetail({verkauf,firma,isMobile,showConfirm,showToast,onSil,onAbbruch}){
+function VerkaufDetail({verkauf,firma,isMobile,showConfirm,showToast,onSil,onAbbruch,onGuncelle}){
   const printRef=useRef();
   const vk=verkauf;
   const zubehoer=vk.zubehoer||[];
+  const [editModus,setEditModus]=useState(false);
+  const [editNummer,setEditNummer]=useState(vk.nummer||"");
+  const [editKundenNr,setEditKundenNr]=useState(vk.kundeKdNr||"");
 
   function rechnungOpts(){
     const rabatt=parseFloat(vk.rabatt)||0;
@@ -5710,9 +5736,21 @@ function VerkaufDetail({verkauf,firma,isMobile,showConfirm,showToast,onSil,onAbb
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {vk.telefon&&<button onClick={whatsappSenden} style={{...btnSecondary,color:"#25D366",borderColor:"#25D366"}}>💬 WhatsApp (PDF)</button>}
+          {onGuncelle&&<button onClick={()=>setEditModus(p=>!p)} style={{...btnSecondary,color:editModus?COLORS.accent:COLORS.muted,borderColor:editModus?COLORS.accent:COLORS.border}}>✏️ Nummern</button>}
           <button onClick={drucken} style={btnPrimary}>🖨️ Rechnung drucken</button>
         </div>
       </div>
+
+      {editModus&&onGuncelle&&(
+        <div style={{background:COLORS.card,border:`1px solid ${COLORS.accent}`,borderRadius:12,padding:"18px 20px",marginBottom:14}}>
+          <div style={{fontWeight:600,marginBottom:14,color:COLORS.accent}}>✏️ Nummern bearbeiten</div>
+          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:10,marginBottom:14}}>
+            <div><label style={labelStyle}>Rechnungsnummer</label><input value={editNummer} onChange={e=>setEditNummer(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={inputStyle}/></div>
+            <div><label style={labelStyle}>Kundennummer</label><input value={editKundenNr} onChange={e=>setEditKundenNr(e.target.value.replace(/\D/g,""))} inputMode="numeric" style={inputStyle}/></div>
+          </div>
+          <button onClick={()=>{onGuncelle({...vk,nummer:String(editNummer||"").trim()||vk.nummer,kundeKdNr:String(editKundenNr||"").trim()});setEditModus(false);showToast&&showToast("Gespeichert!");}} style={btnPrimary}>💾 Speichern</button>
+        </div>
+      )}
 
       <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
         <button onClick={()=>showConfirm("Verkauf wirklich löschen?",()=>onSil(vk.id),{icon:"🗑️",okLabel:"Löschen"})}
