@@ -1123,9 +1123,13 @@ export default function DrahteselApp() {
 
   function showToast(msg,art="ok"){setToast({msg,art});setTimeout(()=>setToast(null),3500);}
 
-  function naechsteNr(liste,feld,start){
-    const nrs=liste.map(r=>parseInt(r[feld])||0);
-    return String((nrs.length?Math.max(...nrs):start)+1).padStart(4,"0");
+  function naechsteNr(liste,feld,start,minNr){
+    const nrs=liste.map(r=>parseInt(r[feld])||0).filter(n=>n>0);
+    const m=parseInt(minNr);const hasMin=!isNaN(m)&&m>0;
+    let next;
+    if(nrs.length){next=Math.max(...nrs)+1;if(hasMin&&m>next)next=m;}
+    else{next=hasMin?m:(start+1);}
+    return String(next).padStart(4,"0");
   }
 
   // ── CRUD fonksiyonları ──────────────────────────────────────────────────────
@@ -1133,7 +1137,8 @@ export default function DrahteselApp() {
     const id=genId(); const erstellt=heute();
     // State'teki kunden listesinden maxNr hesapla — ayrı DB çağrısı gereksiz
     const maxNr=kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0);
-    const kdNr=String(maxNr+1).padStart(4,"0");
+    const minK=parseInt(getFirma().startKunde)||0;
+    const kdNr=String(Math.max(maxNr+1,minK)).padStart(4,"0");
     const neu={...k,id,kdNr,erstellt};
     await dbInsert("kunden",{id,erstellt,data:{...k,kdNr}});
     setKunden(p=>[neu,...p]); return neu;
@@ -1601,6 +1606,7 @@ export default function DrahteselApp() {
           auftrag={selAuftrag}
           isMobile={isMobile}
           kunde={kunden.find(k=>k.id===selAuftrag.kundeId)||{}}
+          rechnungNrVorschlag={naechsteNr(rechnungen,"nummer",1,getFirma().startRechnung)}
           onLoeschen={async(id)=>{try{await auftragLoeschen(id);setAuftraege(p=>p.filter(x=>x.id!==id));setScreen("auftraege");showToast("Auftrag gelöscht.");}catch(e){showToast("Fehler beim Löschen: "+e.message,"err");}}}
           onAktualisieren={async(a)=>{try{await auftragAktualisieren(a);setSelAuftrag(a);setAuftraege(p=>p.map(x=>x.id===a.id?{...x,...a}:x));showToast("Gespeichert!");}catch(e){showToast("Fehler: "+e.message,"err");}}}
           onStatusChange={async(id,st)=>{try{await auftragStatusAendern(id,st);showToast(`Status: ${st}`);}catch(e){showToast("Fehler","err");}}}
@@ -1608,12 +1614,15 @@ export default function DrahteselApp() {
           onRechnungErstellen={async(a,_zahlart,abgeholt=false)=>{
             try{
               const k=kunden.find(x=>x.id===a.kundeId)||{};
-              const nr=naechsteNr(rechnungen,"nummer",1);
+              const nr=String(a.rechnungNr||"").trim()||naechsteNr(rechnungen,"nummer",1);
+              const kdNr=String(a.kundenNr||"").trim()||k.kdNr;
+              // Kundennummer elle değiştirildiyse müşteri kaydını da güncelle (ileride de tutarlı kalsın)
+              if(k.id&&kdNr&&kdNr!==k.kdNr){try{await kundeAktualisieren({...k,kdNr});}catch(e){}}
               const neu=await rechnungHinzufuegen({
                 nummer:nr,kundeId:a.kundeId,auftragId:a.id,
                 positionen:a.positionen,brutto:a.brutto,netto:calcNetto(a.brutto),
                 mwst:calcMwst(a.brutto),bezahlung:a.bezahlung||"Bar",fahrradModell:a.fahrradModell,
-                kundeVorname:k.vorname,kundeNachname:k.nachname,kundeKdNr:k.kdNr,
+                kundeVorname:k.vorname,kundeNachname:k.nachname,kundeKdNr:kdNr,
               },abgeholt);
               setSelRechnung(neu);showToast("Rechnung erstellt!");setScreen("rechnung-detail");
             }catch(e){showToast("Fehler: "+e.message,"err");}
@@ -2229,12 +2238,14 @@ function WaMessageEditor({template,kunde,auftrag}){
   );
 }
 
-function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm,isMobile,onKundeDetail}){
+function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungErstellen,onLoeschen,onAktualisieren,onAbbruch,showToast,showConfirm,isMobile,onKundeDetail,rechnungNrVorschlag}){
   const [notizen,setNotizen]=useState((auftrag&&auftrag.notizen)||"");
   const [waTemplate,setWaTemplate]=useState(null);
   const [zahlungModal,setZahlungModal]=useState(false);
   const [zahlungsart,setZahlungsart]=useState("Bar");
   const [direktAbgeholt,setDirektAbgeholt]=useState(true);
+  const [rechnungNr,setRechnungNr]=useState("");
+  const [kundenNr,setKundenNr]=useState("");
   const [posEditModus,setPosEditModus]=useState(false);
   const [editPositionen,setEditPositionen]=useState((auftrag&&auftrag.positionen)||[]);
   const [posKatalogOffen,setPosKatalogOffen]=useState(false);
@@ -2443,7 +2454,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             {/* Fertig'de: Rechnung erstellen butonu */}
             {auftrag.status==="Fertig"&&(
               <div style={{display:"flex",gap:8,marginLeft:8,flexWrap:"wrap"}}>
-                <button onClick={()=>setZahlungModal(true)}
+                <button onClick={()=>{setRechnungNr(rechnungNrVorschlag||"");setKundenNr((kunde&&kunde.kdNr)||"");setZahlungModal(true);}}
                   style={{...btnPrimary,padding:"8px 18px",fontSize:13}}>
                   🧾 Rechnung + Abgeholt
                 </button>
@@ -2739,6 +2750,17 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
           <div style={{background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:16,padding:"32px 28px",width:"100%",maxWidth:380}}>
             <div style={{fontWeight:700,fontSize:18,marginBottom:6}}>🧾 Rechnung erstellen</div>
             <div style={{color:COLORS.muted,fontSize:13,marginBottom:20}}>Gesamtbetrag: <strong style={{color:COLORS.accent}}>{formatEuro(auftrag.brutto||0)}</strong></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:6}}>
+              <div>
+                <label style={labelStyle}>Rechnungsnummer</label>
+                <input value={rechnungNr} onChange={e=>setRechnungNr(e.target.value)} style={inputStyle} inputMode="numeric"/>
+              </div>
+              <div>
+                <label style={labelStyle}>Kundennummer</label>
+                <input value={kundenNr} onChange={e=>setKundenNr(e.target.value)} style={inputStyle} inputMode="numeric"/>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:COLORS.muted,marginBottom:18}}>Vorschlag automatisch – bei Bedarf an Ihre Buchhaltung anpassen.</div>
             <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>Zahlungsart wählen:</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:24}}>
               {["Bar","EC-Karte","Kreditkarte","PayPal","Überweisung","Auf Rechnung"].map(z=>(
@@ -2757,7 +2779,7 @@ function AuftragDetail({auftrag,kunde,onStatusChange,onNotizenChange,onRechnungE
             </label>
             <div style={{display:"flex",gap:12}}>
               <button onClick={()=>setZahlungModal(false)} style={{...btnSecondary,flex:1}}>Abbrechen</button>
-              <button onClick={()=>{setZahlungModal(false);onRechnungErstellen({...auftrag,bezahlung:zahlungsart},zahlungsart,direktAbgeholt);}} style={{...btnPrimary,flex:2}}>✅ Rechnung erstellen</button>
+              <button onClick={()=>{setZahlungModal(false);onRechnungErstellen({...auftrag,bezahlung:zahlungsart,rechnungNr,kundenNr},zahlungsart,direktAbgeholt);}} style={{...btnPrimary,flex:2}}>✅ Rechnung erstellen</button>
             </div>
           </div>
         </div>
@@ -3514,6 +3536,8 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   const printRef=useRef();const k=kunde||{};
   const [editModus,setEditModus]=useState(false);
   const [editBezahlung,setEditBezahlung]=useState(rechnung.bezahlung||"Bar");
+  const [editNummer,setEditNummer]=useState(rechnung.nummer||"");
+  const [editKundenNr,setEditKundenNr]=useState(rechnung.kundeKdNr||(kunde&&kunde.kdNr)||"");
   function rechnungOpts(){
     const items=(rechnung.positionen||[]).map(p=>({bez:p.beschreibung,ep:parseFloat(p.einzelpreis)||0,menge:(p.menge==null?1:p.menge)}));
     const empfLines=[`${k.strasse||""} ${k.hausnr||""}`.trim(),`${k.plz||""} ${k.ort||""}`.trim(),k.land||"Deutschland"];
@@ -3553,6 +3577,16 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
       {editModus&&(
         <div style={{background:COLORS.card,border:`1px solid ${COLORS.accent}`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
           <div style={{fontWeight:600,marginBottom:14,color:COLORS.accent}}>✏️ Rechnung düzenle</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <div>
+              <label style={labelStyle}>Rechnungsnummer</label>
+              <input value={editNummer} onChange={e=>setEditNummer(e.target.value)} style={inputStyle} inputMode="numeric"/>
+            </div>
+            <div>
+              <label style={labelStyle}>Kundennummer</label>
+              <input value={editKundenNr} onChange={e=>setEditKundenNr(e.target.value)} style={inputStyle} inputMode="numeric"/>
+            </div>
+          </div>
           <div style={{marginBottom:12}}>
             <label style={labelStyle}>Zahlungsart</label>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -3566,7 +3600,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
               ))}
             </div>
           </div>
-          <button onClick={()=>{onAktualisieren({...rechnung,bezahlung:editBezahlung});setEditModus(false);}} style={btnPrimary}>💾 Kaydet</button>
+          <button onClick={()=>{onAktualisieren({...rechnung,bezahlung:editBezahlung,nummer:String(editNummer||"").trim()||rechnung.nummer,kundeKdNr:String(editKundenNr||"").trim()});setEditModus(false);}} style={btnPrimary}>💾 Kaydet</button>
         </div>
       )}
 
@@ -3863,6 +3897,18 @@ function EinstellungenScreen({benutzer,benutzerListe,setBenutzerListe,showToast,
           </div>
         );
       })()}
+    </div>
+
+    {/* NUMMERNKREISE — Rechnungs- & Kundennummer Startwerte */}
+    <div style={{background:COLORS.card,border:`1px solid ${COLORS.border}`,borderRadius:12,padding:"18px 20px",marginBottom:16}}>
+      <div style={{fontWeight:600,fontSize:13,color:COLORS.muted,letterSpacing:.5,marginBottom:10}}>🔢 NUMMERNKREISE</div>
+      <div style={{color:COLORS.muted,fontSize:13,marginBottom:16,lineHeight:1.5}}>
+        Nächste Nummer, ab der das System weiterzählt – so stimmen die Nummern mit Ihrer Buchhaltung überein. Das System schlägt beim Erstellen immer <strong>mindestens</strong> diese Nummer vor und zählt danach automatisch hoch. Leer lassen = fortlaufend ab dem höchsten vorhandenen Wert.
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div><label style={labelStyle}>Nächste Rechnungsnummer</label><input value={firma.startRechnung||""} onChange={e=>FF("startRechnung",e.target.value.replace(/\D/g,""))} placeholder="z. B. 0041" inputMode="numeric" style={inputStyle}/></div>
+        <div><label style={labelStyle}>Nächste Kundennummer</label><input value={firma.startKunde||""} onChange={e=>FF("startKunde",e.target.value.replace(/\D/g,""))} placeholder="z. B. 0120" inputMode="numeric" style={inputStyle}/></div>
+      </div>
     </div>
 
     {/* FİRMA BİLGİLERİ */}
