@@ -1631,6 +1631,8 @@ export default function DrahteselApp() {
           onKundeDetail={selKunde?()=>{setBreadcrumb([{screen:"auftraege",label:"Aufträge"},{screen:"auftrag-detail",label:`#${selAuftrag?.nummer}`},{screen:"kunde-detail",label:`${selKunde.nachname}`}]);setScreen("kunde-detail");}:null}
           showToast={showToast} showConfirm={showConfirm}/>}
         {screen==="rechnungen"&&<AlleRechnungen rechnungen={rechnungen} kunden={kunden}
+          naechsteRechnungNr={naechsteNr(rechnungen,"nummer",1,getFirma().startRechnung)}
+          naechsteKundenNr={String(Math.max(kunden.reduce((m,x)=>Math.max(m,parseInt(x.kdNr)||0),0)+1,parseInt(getFirma().startKunde)||0)).padStart(4,"0")}
           onDetail={(r,k)=>{setSelRechnung(r);setSelKunde(k);setScreen("rechnung-detail");}}/>}
         {screen==="rechnung-detail"&&selRechnung&&<RechnungDetail
           rechnung={selRechnung} kunde={kunden.find(k=>k.id===selRechnung.kundeId)}
@@ -3662,7 +3664,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   );
 }
 
-function AlleRechnungen({rechnungen,kunden,onDetail}){
+function AlleRechnungen({rechnungen,kunden,onDetail,naechsteRechnungNr,naechsteKundenNr}){
   const [suche,setSuche]=useState("");
   const liste=[...rechnungen]
     .filter(r=>{
@@ -3681,6 +3683,14 @@ function AlleRechnungen({rechnungen,kunden,onDetail}){
     });
   return(<div>
     <h2 style={{marginBottom:16}}>Alle Rechnungen</h2>
+    {(naechsteRechnungNr||naechsteKundenNr)&&(
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"center",background:`${COLORS.accent}11`,border:`1px solid ${COLORS.accent}33`,borderRadius:10,padding:"10px 16px",marginBottom:16,fontSize:13}}>
+        <span style={{color:COLORS.muted,fontWeight:600,letterSpacing:.3}}>NÄCHSTE NUMMER</span>
+        <span>Rechnung <strong style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent}}>{naechsteRechnungNr}</strong></span>
+        <span>Kunde <strong style={{fontFamily:"'IBM Plex Mono'",color:COLORS.accent}}>{naechsteKundenNr}</strong></span>
+        <span style={{color:COLORS.muted,fontSize:11}}>· nur zur Ansicht</span>
+      </div>
+    )}
     <input placeholder="🔍 Suchen (Nr., Kunde, Kd.-Nr., Fahrrad)…" value={suche} onChange={e=>setSuche(e.target.value)} style={{...inputStyle,marginBottom:16}}/>
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {liste.map(r=>{const k=kunden.find(x=>x.id===r.kundeId)||{};return(
