@@ -414,11 +414,11 @@ const WA_TEMPLATES = [
 Ihr Fahrrad${a&&a.fahrradModell?" ("+a.fahrradModell+")":""} ist fertig und steht zur Abholung bereit! Der Gesamtpreis beträgt ${formatEuro((a&&a.brutto)||0)}.
 Es wäre super, wenn Sie das Geld passend in Bar mitbringen könnten. Wir freuen uns, wenn Sie es zeitnah abholen können.
 Unsere Öffnungszeiten:
-Mo–Fr: 10:00–19:00 Uhr
-Sa: 10:00–16:00 Uhr
+Mo–Fr: 10:00–18:00 Uhr
+Sa: 10:00–15:00 Uhr
 Viele Grüße
 Drahtesel Plus`},
-  {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wartet noch auf Abholung. Wir haben Mo–Sa von 9–18 Uhr geöffnet. – Drahtesel Plus`},
+  {id:"erinnerung",label:"⏰ Hatırlatma",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Ihr Fahrrad (${(a&&a.fahrradModell)||""}) wartet noch auf Abholung. Wir haben Mo–Fr von 10–18 Uhr und Sa von 10–15 Uhr geöffnet. – Drahtesel Plus`},
   {id:"kvvoranschlag",label:"💶 Fiyat teklifi",text:(k,a)=>`Hallo ${(k&&k.vorname)||""}! Unser Kostenvoranschlag für Ihr Fahrrad (${(a&&a.fahrradModell)||""}): ca. ${formatEuro((a&&a.brutto)||0)} (inkl. MwSt.). Dürfen wir mit der Arbeit beginnen? – Drahtesel Plus`},
 ];
 
@@ -3300,7 +3300,28 @@ function NeuKundeForm({onSave,onAbbruch,showToast,kunden}){
   const [saving,setSaving]=useState(false);
   const [form,setForm]=useState({vorname:"",nachname:"",email:"",telefon:"",whatsapp:"",strasse:"",hausnr:"",plz:"",ort:"",land:"Deutschland",notiz:""});
   const [dsgvoOk,setDsgvoOk]=useState(false);
-  const F=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const [dup,setDup]=useState(null);
+  const F=(k,v)=>{setForm(p=>({...p,[k]:v}));setDup(null);};
+  function findeDuplikat(){
+    const norm=(s)=>(s||"").replace(/\s+/g," ").trim().toLowerCase();
+    const tel=(form.telefon||"").replace(/\D/g,"");
+    const nameKey=norm(`${form.vorname||""} ${form.nachname||""}`);
+    return (kunden||[]).find(k=>{
+      const kt=(k.telefon||"").replace(/\D/g,"");
+      const kn=norm(`${k.vorname||""} ${k.nachname||""}`);
+      return (tel&&kt&&kt===tel)||(nameKey&&kn&&kn===nameKey);
+    })||null;
+  }
+  async function speichern(force){
+    if(saving)return;
+    if(!form.vorname||!form.nachname){showToast("Pflichtfelder ausfüllen!","err");return;}
+    if(form.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)){showToast("Bitte gültige E-Mail-Adresse eingeben.","err");return;}
+    if(!dsgvoOk){showToast("Bitte Datenschutzhinweis bestätigen.","err");return;}
+    if(!force){const d=findeDuplikat();if(d){setDup(d);return;}}
+    setSaving(true);
+    try{await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});}
+    finally{setSaving(false);}
+  }
   return(<div><h2 style={{marginBottom:20}}>Neuer Kunde</h2><KundeFormFelder form={form} F={F}/>
     <div style={{marginTop:20,background:"#fff8e1",border:"1.5px solid #f59e0b",borderRadius:10,padding:"14px 16px",marginBottom:16}}>
       <div style={{fontWeight:700,fontSize:12,color:"#92400e",letterSpacing:.5,marginBottom:8}}>🔒 DATENSCHUTZHINWEIS</div>
@@ -3312,16 +3333,17 @@ function NeuKundeForm({onSave,onAbbruch,showToast,kunden}){
         <span style={{fontSize:12,color:"#78350f",fontWeight:600}}>Datenschutzhinweis bestätigt <span style={{color:"#dc2626"}}>*</span></span>
       </label>
     </div>
+    {dup&&(
+      <div style={{background:"#fef2f2",border:"1.5px solid #ef4444",borderRadius:10,padding:"14px 16px",marginBottom:16}}>
+        <div style={{fontWeight:700,fontSize:13,color:"#b91c1c",marginBottom:6}}>⚠️ Kunde existiert möglicherweise bereits</div>
+        <div style={{fontSize:13,color:"#7f1d1d",lineHeight:1.6}}>
+          <strong>{dup.vorname} {dup.nachname}</strong>{dup.kdNr?` · Kd.-Nr. ${dup.kdNr}`:""}{dup.telefon?` · Tel. ${dup.telefon}`:""} ist bereits gespeichert. Bitte prüfen, ob es dieselbe Person ist, bevor Sie neu anlegen.
+        </div>
+        <button onClick={()=>speichern(true)} style={{...btnSecondary,marginTop:10,color:"#b91c1c",borderColor:"#ef4444",fontSize:13}}>Trotzdem neu anlegen</button>
+      </div>
+    )}
     <div style={{display:"flex",gap:12}}>
-      <button disabled={saving} onClick={async()=>{
-        if(saving)return;
-        if(!form.vorname||!form.nachname){showToast("Pflichtfelder ausfüllen!","err");return;}
-        if(form.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)){showToast("Bitte gültige E-Mail-Adresse eingeben.","err");return;}
-        if(!dsgvoOk){showToast("Bitte Datenschutzhinweis bestätigen.","err");return;}
-        setSaving(true);
-        try{await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});}
-        finally{setSaving(false);}
-      }} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichert…":"Speichern"}</button>
+      <button disabled={saving} onClick={()=>speichern(false)} style={{...btnPrimary,opacity:saving?.6:1}}>{saving?"Speichert…":"Speichern"}</button>
       <button onClick={onAbbruch} style={btnSecondary}>Abbrechen</button>
     </div></div>);
 }
