@@ -1779,7 +1779,36 @@ function LoginScreen({onLogin,onKundeLogin}){
 }
 function KundeSelbsteintragenScreen({onSave,onBack}){
   const [form,setForm]=useState({vorname:"",nachname:"",email:"",telefon:"",whatsapp:"",strasse:"",hausnr:"",plz:"",ort:"",land:"Deutschland",notiz:""});
-  const F=(k,v)=>setForm(p=>({...p,[k]:v}));const [saving,setSaving]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [dup,setDup]=useState(false);
+  const F=(k,v)=>{setForm(p=>({...p,[k]:v}));setDup(false);};
+  async function absenden(force){
+    if(saving)return;
+    if(!form.vorname||!form.nachname||!form.telefon){showToastGlobal("Bitte Vorname, Nachname und Telefonnummer ausfüllen.","err");return;}
+    const chk=document.getElementById("dsgvo-check");
+    if(!chk||!chk.checked){showToastGlobal("Bitte stimmen Sie dem Datenschutzhinweis zu.","err");return;}
+    setSaving(true);
+    // Mükerrer kontrol: sunucu RPC (gizlilik güvenli — yalnız var/yok döner). RPC yoksa/erişilemezse kayda devam eder.
+    if(!force){
+      try{
+        const tel=(form.telefon||"").replace(/\D/g,"");
+        if(tel){
+          const r=await fetch(`${SUPA_URL}/rest/v1/rpc/kunde_telefon_existiert`,{
+            method:"POST",
+            headers:{"Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":`Bearer ${SUPA_KEY}`},
+            body:JSON.stringify({tel})
+          });
+          if(r.ok){const exists=await r.json();if(exists===true){setDup(true);setSaving(false);return;}}
+        }
+      }catch{}
+    }
+    try{
+      await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
+    }catch(err){
+      showToastGlobal("Fehler beim Speichern. Bitte erneut versuchen oder Personal ansprechen.","err");
+      setSaving(false);
+    }
+  }
   return(
     <div style={{minHeight:"100vh",background:COLORS.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
@@ -1818,20 +1847,18 @@ function KundeSelbsteintragenScreen({onSave,onBack}){
             <span style={{fontSize:12,color:"#78350f",fontWeight:600}}>Ich habe den Datenschutzhinweis gelesen und stimme zu. <span style={{color:"#dc2626"}}>*</span></span>
           </label>
         </div>
+        {dup&&(
+          <div style={{background:"#fef2f2",border:"1.5px solid #ef4444",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#b91c1c",marginBottom:6}}>⚠️ Sie sind bereits registriert</div>
+            <div style={{fontSize:13,color:"#7f1d1d",lineHeight:1.6}}>
+              Diese Telefonnummer ist bei uns schon gespeichert. Sie müssen sich nicht erneut eintragen – bitte sprechen Sie einfach kurz unser Team an.
+            </div>
+            <button onClick={()=>absenden(true)} style={{...btnSecondary,marginTop:10,color:"#b91c1c",borderColor:"#ef4444",fontSize:13}}>Trotzdem absenden</button>
+          </div>
+        )}
         <div style={{display:"flex",gap:12}}>
           <button onClick={onBack} style={btnSecondary}>Zurück</button>
-          <button disabled={saving} onClick={async()=>{
-            if(!form.vorname||!form.nachname||!form.telefon){showToastGlobal("Bitte Vorname, Nachname und Telefonnummer ausfüllen.","err");return;}
-            const chk=document.getElementById("dsgvo-check");
-            if(!chk||!chk.checked){showToastGlobal("Bitte stimmen Sie dem Datenschutzhinweis zu.","err");return;}
-            setSaving(true);
-            try{
-              await onSave({...form,dsgvoZustimmung:true,dsgvoDatum:new Date().toISOString()});
-            }catch(err){
-              showToastGlobal("Fehler beim Speichern. Bitte erneut versuchen oder Personal ansprechen.","err");
-              setSaving(false);
-            }
-          }} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Wird gespeichert...":"✓ Absenden"}</button>
+          <button disabled={saving} onClick={()=>absenden(false)} style={{...btnPrimary,flex:1,opacity:saving?.6:1}}>{saving?"Wird gespeichert...":"✓ Absenden"}</button>
         </div>
       </div>
     </div>
