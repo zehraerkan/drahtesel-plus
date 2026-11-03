@@ -1359,7 +1359,7 @@ export default function DrahteselApp() {
           if(!strasse&&!plz&&!ort){const pa=parseAdresseDE(vk.adresse);strasse=pa.strasse;plz=pa.plz;ort=pa.ort;}
           let vorname=vk.vorname||"",nachname=vk.nachname||"";
           if(!vorname&&!nachname){const parts=(vk.kundeName||"").trim().split(/\s+/);nachname=parts.length>1?parts[parts.length-1]:(parts[0]||"");vorname=parts.length>1?parts.slice(0,-1).join(" "):"";}
-          const neuerK=await kundeHinzufuegen({vorname,nachname,telefon:vk.telefon||"",whatsapp:vk.telefon||"",email:vk.email||"",strasse,hausnummer,plz,ort,land:vk.land||"Deutschland",notiz:"Automatisch aus Verkauf angelegt",quelle:"Verkauf",kdNr:kundeKdNr||undefined});
+          const neuerK=await kundeHinzufuegen({vorname,nachname,telefon:vk.telefon||"",whatsapp:vk.telefon||"",email:vk.email||"",strasse,hausnr:hausnummer,plz,ort,land:vk.land||"Deutschland",notiz:"Automatisch aus Verkauf angelegt",quelle:"Verkauf",kdNr:kundeKdNr||undefined});
           kundeId=neuerK.id;kundeKdNr=neuerK.kdNr;
         }catch(e){/* müşteri eklenemezse satış yine de kaydedilir */}
       }
@@ -3169,7 +3169,7 @@ function KundenListe({kunden,auftraege,bisikletler,onWaehle,onNeu,onRefresh}){
 }
 function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoeschen,onNeuBisiklet,onBisikletDetail,onBisikletLoeschen,onNeuAuftrag,onAuftrag,onRechnung,onAbbruch,showConfirm,showAlert}){
   const [bearbeiten,setBearbeiten]=useState(false);
-  const [form,setForm]=useState({...kunde});
+  const [form,setForm]=useState({...kunde,hausnr:kunde.hausnr||kunde.hausnummer||""});
   const F=(k,v)=>setForm(p=>({...p,[k]:v}));
   if(bearbeiten) return(
     <div><h2 style={{marginBottom:20}}>Kunde bearbeiten</h2>
@@ -3218,7 +3218,7 @@ function KundeDetail({kunde,bisikletler,auftraege,rechnungen,onBearbeiten,onLoes
               "E-Mail: "+(k.email||"—"),
               "Telefon: "+(k.telefon||"—"),
               "WhatsApp: "+(k.whatsapp||"—"),
-              "Adresse: "+(k.strasse||"")+" "+(k.hausnr||"")+", "+(k.plz||"")+" "+(k.ort||""),
+              "Adresse: "+(k.strasse||"")+" "+(k.hausnr||k.hausnummer||"")+", "+(k.plz||"")+" "+(k.ort||""),
               "Erfasst am: "+(k.erstellt||"—"),
               k.dsgvoZustimmung?"DSGVO-Einwilligung: Ja":"DSGVO-Einwilligung: Nicht digital erfasst",
               sep,
@@ -3591,7 +3591,7 @@ function RechnungDetail({rechnung,kunde,onAbbruch,onLoeschen,onAktualisieren,sho
   const [editKundenNr,setEditKundenNr]=useState(rechnung.kundeKdNr||(kunde&&kunde.kdNr)||"");
   function rechnungOpts(){
     const items=(rechnung.positionen||[]).map(p=>({bez:p.beschreibung,ep:parseFloat(p.einzelpreis)||0,menge:(p.menge==null?1:p.menge)}));
-    const empfLines=[`${k.strasse||""} ${k.hausnr||""}`.trim(),`${k.plz||""} ${k.ort||""}`.trim(),k.land||"Deutschland"];
+    const empfLines=[`${k.strasse||""} ${k.hausnr||k.hausnummer||""}`.trim(),`${k.plz||""} ${k.ort||""}`.trim(),k.land||"Deutschland"];
     return {
       nummer:rechnung.nummer, kundeNr:rechnung.kundeKdNr||k.kdNr, datum:rechnung.erstellt,
       empfName:`${k.vorname||""} ${k.nachname||""}`.trim(), empfLines,
@@ -4953,7 +4953,7 @@ function VermietungForm({kunden,envanter,mietraeder,isMobile,showToast,onSave,on
             <div style={{position:"absolute",top:"100%",left:0,right:0,background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,marginTop:4,zIndex:10,boxShadow:"0 4px 16px #0002",maxHeight:200,overflowY:"auto"}}>
               {kundenGefiltert.map(k=>(
                 <div key={k.id} onClick={()=>{
-                  setForm(p=>({...p,mieterName:`${k.vorname} ${k.nachname}`,telefon:k.telefon||"",adresse:`${k.strasse||""} ${k.hausnummer||""}, ${k.plz||""} ${k.ort||""}`.trim()}));
+                  setForm(p=>({...p,mieterName:`${k.vorname} ${k.nachname}`,telefon:k.telefon||"",adresse:`${k.strasse||""} ${k.hausnr||k.hausnummer||""}, ${k.plz||""} ${k.ort||""}`.trim()}));
                   setKundeSuche("");
                 }} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}
                 onMouseEnter={e=>e.currentTarget.style.background=COLORS.card}
@@ -5565,7 +5565,7 @@ function VerkaufForm({kunden,envanter,isMobile,showToast,onSave,onAbbruch,nummer
             <div style={{position:"absolute",top:"100%",left:0,right:0,background:COLORS.surface,border:`1px solid ${COLORS.border}`,borderRadius:8,marginTop:4,zIndex:10,boxShadow:"0 4px 16px #0002",maxHeight:200,overflowY:"auto"}}>
               {kundenGefiltert.map(k=>(
                 <div key={k.id} onClick={()=>{
-                  setForm(p=>({...p,vorname:k.vorname||"",nachname:k.nachname||"",telefon:k.telefon||"",email:k.email||"",strasse:k.strasse||"",hausnummer:k.hausnummer||"",plz:k.plz||"",ort:k.ort||"",land:k.land||"Deutschland",kundeId:k.id,kundeKdNr:k.kdNr||""}));
+                  setForm(p=>({...p,vorname:k.vorname||"",nachname:k.nachname||"",telefon:k.telefon||"",email:k.email||"",strasse:k.strasse||"",hausnummer:k.hausnr||k.hausnummer||"",plz:k.plz||"",ort:k.ort||"",land:k.land||"Deutschland",kundeId:k.id,kundeKdNr:k.kdNr||""}));
                   setKundeSuche("");
                 }} style={{padding:"10px 14px",cursor:"pointer",borderBottom:`1px solid ${COLORS.border}`,fontSize:13}}
                 onMouseEnter={e=>e.currentTarget.style.background=COLORS.card}
